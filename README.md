@@ -14,7 +14,7 @@ anti-virus softwares cannot flag the CaRT file as malware.
 * METADATA: CaRT can store the file metadata in the same file as the file itself; the metadata can be read without 
 reading the full file
 * HASH CALCULATION: CaRT calculates the hashes of the file while it is encoding it and store that information in the 
-footerCopyright (c) 2015-2017 Crown Copyright, Government of Canada (Communications Security Establishment)
+footer
 * SIZE: CaRT files are usually smaller then the original files because it uses compression. (Except in the case we you 
 store huge amount of metadata in the CaRT)
 
