@@ -1,3 +1,5 @@
+use cart;
+
 use std::process;
 use argparse::{ArgumentParser, StoreTrue, Store, StoreOption, Print};
 
@@ -7,7 +9,22 @@ fn main() {
         process::exit(1);
     });
 
-    println!("{:?}", config);
+    //println!("{:?}", config);
+
+    if config.file.len() == 0 {
+        println!("No file specified. Please use 'cart -h' to show help message.");
+        process::exit(1);
+    }
+
+    let o_path = match config.outfile {
+        Some(f) => f,
+        None => format!("{}.cart", config.file),
+    };
+
+
+    cart::pack_file(&config.file, &o_path, None, None, None).unwrap_or_else(|err| {
+        println!("{}", err);
+    });
 }
 
 #[derive(Debug)]
@@ -26,7 +43,7 @@ struct Config {
 
 impl Config {
     fn new() -> Result<Config, &'static str> {
-        let mut file: String = "".to_string();
+        let mut file: String = String::from("");
 
         let mut delete = false;
         let mut force = false;

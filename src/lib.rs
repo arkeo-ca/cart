@@ -1,11 +1,14 @@
 extern crate bincode;
 extern crate crypto;
+extern crate libflate;
 
 use serde::{Serialize, Deserialize};
 use crypto::symmetriccipher::SynchronousStreamCipher;
 use crypto::rc4::Rc4;
+use libflate::zlib::{Encoder, EncodeOptions};
 
-use std::io::{Read, Write};
+use std::io::{self, Read, Write, Error};
+use std::fs::File;
 
 const DEFAULT_VERSION: i16 = 1; // TODO Dynamically generate this constant from cargo package
 const DEFAULT_ARC4_KEY: &[u8] = b"\x03\x01\x04\x01\x05\x09\x02\x06\x03\x01\x04\x01\x05\x09\x02\x06";
@@ -13,9 +16,16 @@ const CART_MAGIC: &str = "CART";
 const TRAC_MAGIC: &str = "TRAC";
 
 
-pub fn pack_stream(istream: impl Read, ostream: impl Write, opt_header: Option<String>,
-    opt_footer: Option<String>, arc4_key_override: Option<Vec<u8>>) {
+pub fn pack_stream(mut istream: impl Read, mut ostream: impl Write, opt_header: Option<String>,
+    opt_footer: Option<String>, arc4_key: Option<Vec<u8>>) -> Result<(), Error> {
 
+    let mut binary: Vec<u8> = Vec::new();
+    istream.by_ref().read_to_end(&mut binary)?;
+
+    let cart_obj = CartObject::new(binary, arc4_key, opt_header, opt_footer, None)?;
+    ostream.write_all(&cart_obj.pack()[..])?;
+
+    Ok(())
 }
 
 pub fn unpack_stream(istream: impl Read, ostream: impl Write, arc4_key_override: Option<Vec<u8>>) {
@@ -23,8 +33,14 @@ pub fn unpack_stream(istream: impl Read, ostream: impl Write, arc4_key_override:
 }
 
 pub fn pack_file(i_path: &str, o_path: &str, opt_header: Option<String>, opt_footer: Option<String>,
-    arc4_key_override: Option<Vec<u8>>) {
+    arc4_key_override: Option<Vec<u8>>) -> Result<(), Error> {
 
+    let infile = File::open(i_path)?;
+    let outfile = File::create(o_path)?;
+
+    pack_stream(infile, outfile, opt_header, opt_footer, arc4_key_override)?;
+
+    Ok(())
 }
 
 pub fn unpack_file(i_path: &str, o_path: &str, arc4_key_override: Option<Vec<u8>>) {
@@ -45,16 +61,18 @@ struct CartObject {
     arc4_key: Vec<u8>,
     opt_header: String,
     opt_footer: String,
+    binary: Vec<u8>,
 }
 
 impl CartObject {
-    fn new(version_override: Option<i16>, arc4_key_override: Option<Vec<u8>>, opt_header: Option<String>, opt_footer: Option<String>) -> Result<CartObject, &'static str>{
-        let version = match version_override {
+    fn new(binary: Vec<u8>, arc4_key: Option<Vec<u8>>, opt_header: Option<String>,
+    opt_footer: Option<String>, version: Option<i16>) -> Result<CartObject, Error>{
+        let version = match version {
             Some(k) => k,
             None => DEFAULT_VERSION,
         };
 
-        let arc4_key = match arc4_key_override {
+        let arc4_key = match arc4_key {
             Some(k) => k,
             None => DEFAULT_ARC4_KEY.to_vec(),
         };
@@ -69,7 +87,7 @@ impl CartObject {
             None => String::from(""),
         };
 
-        Ok(CartObject{version, arc4_key, opt_header, opt_footer})
+        Ok(CartObject{version, arc4_key, opt_header, opt_footer, binary})
     }
 
     fn pack_header(&self) -> Vec<u8> {
@@ -79,6 +97,7 @@ impl CartObject {
         packed_header.extend(CART_MAGIC.as_bytes());
         packed_header.extend(bincode::serialize(&self.version).unwrap());
         packed_header.extend(bincode::serialize(&(0 as u64)).unwrap());
+
         if self.arc4_key == DEFAULT_ARC4_KEY.to_vec() {
             packed_header.extend(&self.arc4_key);
         } else {
@@ -93,6 +112,19 @@ impl CartObject {
         packed_header.extend(out_header);
 
         packed_header
+    }
+
+    fn pack_binary(&self) -> Vec<u8> {
+        let options = EncodeOptions::new().fixed_huffman_codes();
+        let mut encoder = Encoder::with_options(Vec::new(), options).unwrap();
+        io::copy(&mut self.binary.as_slice(), &mut encoder).unwrap();
+        let inflated = encoder.finish().into_result().unwrap();
+
+        let mut cipher = Rc4::new(&self.arc4_key);
+        let mut out_binary: Vec<u8> = vec![0; inflated.len()];
+        cipher.process(&inflated, &mut out_binary[..]);
+
+        out_binary
     }
 
     fn pack_footer(&self) -> Vec<u8> {
@@ -115,6 +147,7 @@ impl CartObject {
         let mut packed_cart: Vec<u8> = Vec::new();
 
         packed_cart.extend(self.pack_header());
+        packed_cart.extend(self.pack_binary());
         packed_cart.extend(self.pack_footer());
 
         packed_cart
@@ -127,7 +160,7 @@ mod tests {
 
     #[test]
     fn test_pack_default_header() {
-        let obj = CartObject::new(None, None, None, None).unwrap();
+        let obj = CartObject::new(b"".to_vec(), None, None, None, None).unwrap();
         let packed = obj.pack_header();
         assert_eq!(b"\x43\x41\x52\x54\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x03\x01\x04\x01\x05\
         \x09\x02\x06\x03\x01\x04\x01\x05\x09\x02\x06\x00\x00\x00\x00\x00\x00\x00\x00".to_vec(), packed);
@@ -136,7 +169,7 @@ mod tests {
     #[test]
     fn test_pack_header_with_metadata() {
         let opt_header = String::from("{\"name\":\"test.txt\"}");
-        let obj = CartObject::new(None, None, Some(opt_header), None).unwrap();
+        let obj = CartObject::new(b"".to_vec(), None, Some(opt_header), None, None).unwrap();
         let packed = obj.pack_header();
         assert_eq!(b"\x43\x41\x52\x54\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x03\x01\x04\x01\x05\
         \x09\x02\x06\x03\x01\x04\x01\x05\x09\x02\x06\x13\x00\x00\x00\x00\x00\x00\x00\xc2\xa4\xa5\
@@ -145,7 +178,7 @@ mod tests {
 
     #[test]
     fn test_pack_default_footer() {
-        let obj = CartObject::new(None, None, None, None).unwrap();
+        let obj = CartObject::new(b"".to_vec(), None, None, None, None).unwrap();
         let packed = obj.pack_footer();
         assert_eq!(b"\x54\x52\x41\x43\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\
         \x00\x00\x00\x00\x00\x00\x00\x00\x00".to_vec(), packed);
@@ -154,7 +187,7 @@ mod tests {
     #[test]
     fn test_pack_footer_with_metadata() {
         let opt_footer = String::from("{\"length\":\"5\"}");
-        let obj = CartObject::new(None, None, None, Some(opt_footer)).unwrap();
+        let obj = CartObject::new(b"".to_vec(), None, None, Some(opt_footer), None).unwrap();
         let packed = obj.pack_footer();
         assert_eq!(b"\xc2\xa4\xa7\x58\x50\xd7\x15\xa5\x79\x2f\x74\x91\x23\x4e\x54\x52\x41\x43\x00\
         \x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x0e\x00\x00\x00\x00\x00\x00\
