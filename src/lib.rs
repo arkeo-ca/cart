@@ -79,7 +79,12 @@ impl CartObject {
         packed_header.extend(CART_MAGIC.as_bytes());
         packed_header.extend(bincode::serialize(&self.version).unwrap());
         packed_header.extend(bincode::serialize(&(0 as u64)).unwrap());
-        packed_header.extend(&self.arc4_key);
+        if self.arc4_key == DEFAULT_ARC4_KEY.to_vec() {
+            packed_header.extend(&self.arc4_key);
+        } else {
+            packed_header.extend(bincode::serialize(&(0 as u128)).unwrap());
+        }
+
         packed_header.extend(bincode::serialize(&(opt_header_len as u64)).unwrap());
 
         let mut cipher = Rc4::new(&self.arc4_key);
