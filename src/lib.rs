@@ -5,10 +5,39 @@ use serde::{Serialize, Deserialize};
 use crypto::symmetriccipher::SynchronousStreamCipher;
 use crypto::rc4::Rc4;
 
+use std::io::{Read, Write};
+
 const DEFAULT_VERSION: i16 = 1; // TODO Dynamically generate this constant from cargo package
 const DEFAULT_ARC4_KEY: &[u8] = b"\x03\x01\x04\x01\x05\x09\x02\x06\x03\x01\x04\x01\x05\x09\x02\x06";
 const CART_MAGIC: &str = "CART";
 const TRAC_MAGIC: &str = "TRAC";
+
+
+pub fn pack_stream(istream: impl Read, ostream: impl Write, opt_header: Option<String>,
+    opt_footer: Option<String>, arc4_key_override: Option<Vec<u8>>) {
+
+}
+
+pub fn unpack_stream(istream: impl Read, ostream: impl Write, arc4_key_override: Option<Vec<u8>>) {
+
+}
+
+pub fn pack_file(i_path: &str, o_path: &str, opt_header: Option<String>, opt_footer: Option<String>,
+    arc4_key_override: Option<Vec<u8>>) {
+
+}
+
+pub fn unpack_file(i_path: &str, o_path: &str, arc4_key_override: Option<Vec<u8>>) {
+
+}
+
+pub fn get_metadata_only(i_path: &str, arc4_key_override: Option<Vec<u8>>) {
+
+}
+
+pub fn is_cart(buffer: impl Read) -> bool {
+    false
+}
 
 #[derive(Serialize, Deserialize)]
 struct CartObject {
@@ -111,8 +140,8 @@ mod tests {
 
     #[test]
     fn test_pack_default_footer() {
-        let header = CartObject::new(None, None, None, None).unwrap();
-        let packed = header.pack_footer();
+        let obj = CartObject::new(None, None, None, None).unwrap();
+        let packed = obj.pack_footer();
         assert_eq!(b"\x54\x52\x41\x43\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\
         \x00\x00\x00\x00\x00\x00\x00\x00\x00".to_vec(), packed);
     }
