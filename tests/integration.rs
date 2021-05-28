@@ -1,9 +1,4 @@
 #[test]
-fn test_not_a_cart() {
-
-}
-
-#[test]
 fn test_empty() {
 
 }
