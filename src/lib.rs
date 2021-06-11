@@ -6,9 +6,12 @@ extern crate json;
 use serde::{Serialize, Deserialize};
 use crypto::symmetriccipher::SynchronousStreamCipher;
 use crypto::rc4::Rc4;
+use crypto::md5::Md5;
+use crypto::sha1::Sha1;
+use crypto::sha2::Sha256;
+use crypto::digest::Digest;
 use libflate::zlib::{Encoder, EncodeOptions};
 use json::object;
-
 use std::io::{self, Read, Write};
 use std::fs::File;
 use std::path::Path;
@@ -25,7 +28,29 @@ pub fn pack_stream(mut istream: impl Read, mut ostream: impl Write, opt_header: 
     let mut binary: Vec<u8> = Vec::new();
     istream.by_ref().read_to_end(&mut binary)?;
 
-    let cart_obj = CartObject::new(binary, arc4_key, opt_header, opt_footer, None)?;
+    let mut footer = match opt_footer {
+        Some(j) => json::parse(&j)?,
+        None => object!(),
+    };
+
+    let mut md5_hasher = Md5::new();
+    md5_hasher.input(&binary);
+    let md5_digest = md5_hasher.result_str();
+
+    let mut sha1_hasher = Sha1::new();
+    sha1_hasher.input(&binary);
+    let sha1_digest = sha1_hasher.result_str();
+
+    let mut sha256_hasher = Sha256::new();
+    sha256_hasher.input(&binary);
+    let sha256_digest = sha256_hasher.result_str();
+
+    footer.insert("length", binary.len().to_string())?;
+    footer.insert("md5", md5_digest)?;
+    footer.insert("sha1", sha1_digest)?;
+    footer.insert("sha256", sha256_digest)?;
+
+    let cart_obj = CartObject::new(binary, arc4_key, opt_header, Some(footer.dump()), None)?;
     ostream.write_all(&cart_obj.pack()[..])?;
 
     Ok(())
@@ -42,7 +67,7 @@ pub fn pack_file(i_path: &Path, o_path: &Path, opt_header: Option<String>, opt_f
     let outfile = File::create(o_path)?;
 
     let mut header = match opt_header {
-        Some(k) => json::parse(&k)?,
+        Some(j) => json::parse(&j)?,
         None => object!(),
     };
 
@@ -100,66 +125,52 @@ impl CartObject {
         Ok(CartObject{version, arc4_key, opt_header, opt_footer, binary})
     }
 
-    fn pack_header(&self) -> Vec<u8> {
-        let mut packed_header: Vec<u8> = Vec::new();
-        let opt_header_len = self.opt_header.len();
-
-        packed_header.extend(CART_MAGIC.as_bytes());
-        packed_header.extend(bincode::serialize(&self.version).unwrap());
-        packed_header.extend(bincode::serialize(&(0 as u64)).unwrap());
-
-        if self.arc4_key == DEFAULT_ARC4_KEY.to_vec() {
-            packed_header.extend(&self.arc4_key);
-        } else {
-            packed_header.extend(bincode::serialize(&(0 as u128)).unwrap());
-        }
-
-        packed_header.extend(bincode::serialize(&(opt_header_len as u64)).unwrap());
-
-        let mut cipher = Rc4::new(&self.arc4_key);
-        let mut out_header: Vec<u8> = vec![0; opt_header_len];
-        cipher.process(self.opt_header.as_bytes(), &mut out_header[..]);
-        packed_header.extend(out_header);
-
-        packed_header
-    }
-
-    fn pack_binary(&self) -> Vec<u8> {
-        let options = EncodeOptions::new().fixed_huffman_codes();
-        let mut encoder = Encoder::with_options(Vec::new(), options).unwrap();
-        io::copy(&mut self.binary.as_slice(), &mut encoder).unwrap();
-        let inflated = encoder.finish().into_result().unwrap();
-
-        let mut cipher = Rc4::new(&self.arc4_key);
-        let mut out_binary: Vec<u8> = vec![0; inflated.len()];
-        cipher.process(&inflated, &mut out_binary[..]);
-
-        out_binary
-    }
-
-    fn pack_footer(&self) -> Vec<u8> {
-        let mut packed_footer: Vec<u8> = Vec::new();
-        let opt_footer_len = self.opt_footer.len();
-
-        let mut cipher = Rc4::new(&self.arc4_key);
-        let mut out_footer: Vec<u8> = vec![0; opt_footer_len];
-        cipher.process(self.opt_footer.as_bytes(), &mut out_footer[..]);
-        packed_footer.extend(out_footer);
-
-        packed_footer.extend(TRAC_MAGIC.as_bytes());
-        packed_footer.extend(bincode::serialize(&(0 as u128)).unwrap());
-        packed_footer.extend(bincode::serialize(&(opt_footer_len as u64)).unwrap());
-
-        packed_footer
-    }
-
     fn pack(&self) -> Vec<u8> {
         let mut packed_cart: Vec<u8> = Vec::new();
 
-        packed_cart.extend(self.pack_header());
-        packed_cart.extend(self.pack_binary());
-        packed_cart.extend(self.pack_footer());
+        let opt_header_len = self.opt_header.len();
+        let opt_footer_len = self.opt_footer.len();
 
+        // Pack mandatory header
+        packed_cart.extend(CART_MAGIC.as_bytes());
+        packed_cart.extend(bincode::serialize(&self.version).unwrap());
+        packed_cart.extend(bincode::serialize(&(0 as u64)).unwrap());
+        if self.arc4_key == DEFAULT_ARC4_KEY.to_vec() {
+            packed_cart.extend(&self.arc4_key);
+        } else {
+            packed_cart.extend(bincode::serialize(&(0 as u128)).unwrap());
+        }
+        packed_cart.extend(bincode::serialize(&(opt_header_len as u64)).unwrap());
+
+        // Pack optional header
+        let mut cipher = Rc4::new(&self.arc4_key);
+        let mut out_header: Vec<u8> = vec![0; opt_header_len];
+        cipher.process(self.opt_header.as_bytes(), &mut out_header[..]);
+        packed_cart.extend(out_header);
+
+        // Pack binary
+        let options = EncodeOptions::new().fixed_huffman_codes();
+        let mut encoder = Encoder::with_options(Vec::new(), options).unwrap();
+        io::copy(&mut self.binary.as_slice(), &mut encoder).unwrap();
+        let deflated = encoder.finish().into_result().unwrap();
+
+        let mut cipher = Rc4::new(&self.arc4_key);
+        let mut out_binary: Vec<u8> = vec![0; deflated.len()];
+        cipher.process(&deflated, &mut out_binary[..]);
+        packed_cart.extend(out_binary);
+
+        // Pack optional footer
+        let mut cipher = Rc4::new(&self.arc4_key);
+        let mut out_footer: Vec<u8> = vec![0; opt_footer_len];
+        cipher.process(self.opt_footer.as_bytes(), &mut out_footer[..]);
+        packed_cart.extend(out_footer);
+
+        // Pack mandatory footer
+        let opt_footer_pos = 38 + opt_header_len + deflated.len();
+        packed_cart.extend(TRAC_MAGIC.as_bytes());
+        packed_cart.extend(bincode::serialize(&(0 as u64)).unwrap());
+        packed_cart.extend(bincode::serialize(&(opt_footer_pos as u64)).unwrap());
+        packed_cart.extend(bincode::serialize(&(opt_footer_len as u64)).unwrap());
         packed_cart
     }
 }
