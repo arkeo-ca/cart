@@ -9,6 +9,7 @@ use libflate::zlib::{Encoder, EncodeOptions};
 
 use std::io::{self, Read, Write, Error};
 use std::fs::File;
+use std::path::Path;
 
 const DEFAULT_VERSION: i16 = 1; // TODO Dynamically generate this constant from cargo package
 const DEFAULT_ARC4_KEY: &[u8] = b"\x03\x01\x04\x01\x05\x09\x02\x06\x03\x01\x04\x01\x05\x09\x02\x06";
@@ -32,11 +33,12 @@ pub fn unpack_stream(istream: impl Read, ostream: impl Write, arc4_key_override:
 
 }
 
-pub fn pack_file(i_path: &str, o_path: &str, opt_header: Option<String>, opt_footer: Option<String>,
+pub fn pack_file(i_path: &Path, o_path: &Path, opt_header: Option<String>, opt_footer: Option<String>,
     arc4_key_override: Option<Vec<u8>>) -> Result<(), Error> {
 
     let infile = File::open(i_path)?;
     let outfile = File::create(o_path)?;
+
 
     pack_stream(infile, outfile, opt_header, opt_footer, arc4_key_override)?;
 

@@ -1,6 +1,7 @@
 use cart;
 
 use std::process;
+use std::path::Path;
 use argparse::{ArgumentParser, StoreTrue, Store, StoreOption, Print};
 
 fn main() {
@@ -16,13 +17,19 @@ fn main() {
         process::exit(1);
     }
 
+    let i_path = Path::new(&config.file);
     let o_path = match config.outfile {
         Some(f) => f,
         None => format!("{}.cart", config.file),
     };
+    let o_path = Path::new(&o_path);
 
+    if o_path.is_file() && !config.force {
+        println!("ERR: file '{}' already exists", o_path.to_string_lossy());
+        process::exit(1);
+    }
 
-    cart::pack_file(&config.file, &o_path, None, None, None).unwrap_or_else(|err| {
+    cart::pack_file(&i_path, &o_path, None, None, None).unwrap_or_else(|err| {
         println!("{}", err);
     });
 }
