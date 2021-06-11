@@ -3,6 +3,7 @@ use cart;
 use std::process;
 use std::path::Path;
 use argparse::{ArgumentParser, StoreTrue, Store, StoreOption, Print};
+use base64::decode;
 
 fn main() {
     let config = Config::new().unwrap_or_else(|err| {
@@ -10,11 +11,21 @@ fn main() {
         process::exit(1);
     });
 
-    //println!("{:?}", config);
-
     if config.file.len() == 0 {
         println!("No file specified. Please use 'cart -h' to show help message.");
         process::exit(1);
+    }
+
+    let mut arc4key = match config.key {
+        Some(k) => Some(decode(k).unwrap_or_else(|_| {
+            println!("Could not decode provided RC4 key");
+            process::exit(1);
+        })),
+        None => None,
+    };
+    if let Some(k) = &mut arc4key {
+        let padding_len = 16 - k.len();
+        k.extend(vec![0 as u8; padding_len]);
     }
 
     let i_path = Path::new(&config.file);
@@ -29,7 +40,7 @@ fn main() {
         process::exit(1);
     }
 
-    cart::pack_file(&i_path, &o_path, config.jsonmeta, None, None).unwrap_or_else(|err| {
+    cart::pack_file(&i_path, &o_path, config.jsonmeta, None, arc4key).unwrap_or_else(|err| {
         println!("{}", err);
     });
 }
