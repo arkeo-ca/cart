@@ -1,13 +1,15 @@
 extern crate bincode;
 extern crate crypto;
 extern crate libflate;
+extern crate json;
 
 use serde::{Serialize, Deserialize};
 use crypto::symmetriccipher::SynchronousStreamCipher;
 use crypto::rc4::Rc4;
 use libflate::zlib::{Encoder, EncodeOptions};
+use json::object;
 
-use std::io::{self, Read, Write, Error};
+use std::io::{self, Read, Write};
 use std::fs::File;
 use std::path::Path;
 
@@ -18,7 +20,7 @@ const TRAC_MAGIC: &str = "TRAC";
 
 
 pub fn pack_stream(mut istream: impl Read, mut ostream: impl Write, opt_header: Option<String>,
-    opt_footer: Option<String>, arc4_key: Option<Vec<u8>>) -> Result<(), Error> {
+    opt_footer: Option<String>, arc4_key: Option<Vec<u8>>) -> Result<(), Box<dyn std::error::Error>> {
 
     let mut binary: Vec<u8> = Vec::new();
     istream.by_ref().read_to_end(&mut binary)?;
@@ -34,13 +36,17 @@ pub fn unpack_stream(istream: impl Read, ostream: impl Write, arc4_key_override:
 }
 
 pub fn pack_file(i_path: &Path, o_path: &Path, opt_header: Option<String>, opt_footer: Option<String>,
-    arc4_key_override: Option<Vec<u8>>) -> Result<(), Error> {
+    arc4_key_override: Option<Vec<u8>>) -> Result<(), Box<dyn std::error::Error>> {
 
     let infile = File::open(i_path)?;
     let outfile = File::create(o_path)?;
 
+    let mut header = match opt_header {
+        Some(k) => json::parse(&k)?,
+        None => object!(),
+    };
 
-    pack_stream(infile, outfile, opt_header, opt_footer, arc4_key_override)?;
+    pack_stream(infile, outfile, Some(header.dump()), opt_footer, arc4_key_override)?;
 
     Ok(())
 }
@@ -68,7 +74,7 @@ struct CartObject {
 
 impl CartObject {
     fn new(binary: Vec<u8>, arc4_key: Option<Vec<u8>>, opt_header: Option<String>,
-    opt_footer: Option<String>, version: Option<i16>) -> Result<CartObject, Error>{
+    opt_footer: Option<String>, version: Option<i16>) -> Result<CartObject, Box<dyn std::error::Error>>{
         let version = match version {
             Some(k) => k,
             None => DEFAULT_VERSION,

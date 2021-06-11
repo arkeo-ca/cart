@@ -29,7 +29,7 @@ fn main() {
         process::exit(1);
     }
 
-    cart::pack_file(&i_path, &o_path, None, None, None).unwrap_or_else(|err| {
+    cart::pack_file(&i_path, &o_path, config.jsonmeta, None, None).unwrap_or_else(|err| {
         println!("{}", err);
     });
 }
