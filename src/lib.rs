@@ -46,6 +46,8 @@ pub fn pack_file(i_path: &Path, o_path: &Path, opt_header: Option<String>, opt_f
         None => object!(),
     };
 
+    header.insert("name", i_path.file_name().unwrap().to_str())?;
+
     pack_stream(infile, outfile, Some(header.dump()), opt_footer, arc4_key_override)?;
 
     Ok(())
