@@ -14,6 +14,7 @@ use libflate::zlib::{Encoder, EncodeOptions};
 use json::object;
 use std::io::{self, Read, Write};
 use std::fs::File;
+use std::str;
 use std::path::Path;
 
 const DEFAULT_VERSION: i16 = 1; // TODO Dynamically generate this constant from cargo package
@@ -59,6 +60,8 @@ opt_footer: Option<String>, arc4_key: Option<Vec<u8>>) -> Result<(), Box<dyn std
 
 pub fn unpack_stream(mut istream: impl Read, mut ostream: impl Write, arc4_key_override: Option<Vec<u8>>)
 -> Result<(), Box<dyn std::error::Error>> {
+    let cart_obj = CartObject::from_cart(istream, false, arc4_key_override);
+
     Ok(())
 }
 
@@ -97,7 +100,7 @@ pub fn get_metadata_only(i_path: &str, arc4_key_override: Option<Vec<u8>>) {
 }
 
 pub fn is_cart(buffer: impl Read) -> bool {
-    false
+    true
 }
 
 pub fn is_cart_file(i_path: &Path) -> Result<bool, Box<dyn std::error::Error>> {
@@ -132,6 +135,20 @@ impl CartObject {
         Ok(CartObject{header, footer, binary: deflated})
     }
 
+    fn from_cart(mut cart_stream: impl Read, metadata: bool, arc4_key: Option<Vec<u8>>) -> Result<CartObject, Box<dyn std::error::Error>> {
+        let header = CartHeader::unpack(&mut cart_stream, arc4_key);
+        let footer = CartFooter::unpack(&mut cart_stream, &header.arc4_key);
+        let binary = if metadata {
+            // TODO Actually parse binary from IOstream
+            Vec::with_capacity(50)
+        } else {
+            Vec::new()
+        };
+
+
+        Ok(CartObject{header, footer, binary})
+    }
+
     fn pack(&self) -> Vec<u8> {
         let mut packed_cart: Vec<u8> = Vec::new();
 
@@ -153,6 +170,7 @@ impl CartObject {
 
 #[derive(Serialize, Deserialize)]
 struct CartHeader {
+    magic: String,
     version: i16,
     arc4_key: Vec<u8>,
     opt_header: String,
@@ -160,6 +178,7 @@ struct CartHeader {
 
 impl CartHeader {
     fn new(arc4_key: Vec<u8>, opt_header: Option<String>, version: Option<i16>) -> CartHeader {
+        let magic = String::from(CART_MAGIC);
         let version = match version {
             Some(k) => k,
             None => DEFAULT_VERSION,
@@ -170,7 +189,49 @@ impl CartHeader {
             None => String::from(""),
         };
 
-        CartHeader{version, arc4_key, opt_header}
+        CartHeader{magic, version, arc4_key, opt_header}
+    }
+
+    fn unpack(mut cart_stream: impl Read, arc4_key_override: Option<Vec<u8>>) -> CartHeader {
+        // Unpack mandatory header
+        let mut buffer = Vec::with_capacity(4);
+        let _ = cart_stream.by_ref().take(4).read_to_end(&mut buffer);
+        let magic = str::from_utf8(&buffer).expect("Wrong magic present").to_string();
+
+        let mut buffer = Vec::with_capacity(2);
+        let _ = cart_stream.by_ref().take(2).read_to_end(&mut buffer);
+        let version: i16 = bincode::deserialize(&buffer).expect("Wrong version present");
+
+        let mut buffer = Vec::with_capacity(8);
+        let _ = cart_stream.by_ref().take(8).read_to_end(&mut buffer);
+
+        let mut buffer = Vec::with_capacity(16);
+        let _ = cart_stream.by_ref().take(16).read_to_end(&mut buffer);
+        let mut arc4_key = buffer.to_vec();
+
+        if arc4_key == vec![0; 16] {
+            arc4_key = if let Some(k) = arc4_key_override {
+                k
+            } else {
+                DEFAULT_ARC4_KEY.to_vec()
+            };
+        }
+
+        let mut buffer = Vec::with_capacity(8);
+        let _ = cart_stream.by_ref().take(8).read_to_end(&mut buffer);
+        let opt_header_len: u64 = bincode::deserialize(&buffer).expect("Wrong length present");
+
+        // Unpack optional header
+        let mut buffer = Vec::with_capacity(opt_header_len as usize);
+        let _ = cart_stream.by_ref().take(opt_header_len).read_to_end(&mut buffer);
+
+        let mut cipher = Rc4::new(&arc4_key);
+        let mut plain_text: Vec<u8> = vec![0; opt_header_len as usize];
+        cipher.process(&buffer, &mut plain_text[..]);
+        // TODO More elegant error propagation
+        let opt_header = str::from_utf8(&plain_text).expect("Could not decrypt header with the given ARC4 key").to_string();
+
+        CartHeader{magic, version, arc4_key, opt_header}
     }
 
     fn pack(&self) -> Vec<u8> {
@@ -178,7 +239,7 @@ impl CartHeader {
         let opt_header_len = self.opt_header.len();
 
         // Pack mandatory header
-        packed_header.extend(CART_MAGIC.as_bytes());
+        packed_header.extend(self.magic.as_bytes());
         packed_header.extend(bincode::serialize(&self.version).unwrap());
         packed_header.extend(bincode::serialize(&(0 as u64)).unwrap());
         if self.arc4_key == DEFAULT_ARC4_KEY.to_vec() {
@@ -210,6 +271,13 @@ impl CartFooter {
             Some(k) => k,
             None => String::from(""),
         };
+
+        CartFooter{opt_footer, footer_pos}
+    }
+
+    fn unpack(cart_stream: impl Read, arc4_key: &Vec<u8>) -> CartFooter {
+        let opt_footer = String::from("");
+        let footer_pos: usize = 0;
 
         CartFooter{opt_footer, footer_pos}
     }
