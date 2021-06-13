@@ -6,16 +6,19 @@ use argparse::{ArgumentParser, StoreTrue, Store, StoreOption, Print};
 use base64::decode;
 
 fn main() {
+    // Parse configuration variables
     let config = Config::new().unwrap_or_else(|err| {
         println!("Problem parsing arguments: {}", err);
         process::exit(1);
     });
 
+    // Ensure that at least one file is provided
     if config.file.len() == 0 {
         println!("No file specified. Please use 'cart -h' to show help message.");
         process::exit(1);
     }
 
+    // Grab provided key from command line and pad as necessary
     let mut arc4key = match config.key {
         Some(k) => Some(decode(k).unwrap_or_else(|_| {
             println!("Could not decode provided RC4 key");
@@ -28,21 +31,43 @@ fn main() {
         k.extend(vec![0 as u8; padding_len]);
     }
 
+    // Process provided file
     let i_path = Path::new(&config.file);
-    let o_path = match config.outfile {
-        Some(f) => f,
-        None => format!("{}.cart", config.file),
-    };
-    let o_path = Path::new(&o_path);
-
-    if o_path.is_file() && !config.force {
-        println!("ERR: file '{}' already exists", o_path.to_string_lossy());
+    if cart::is_cart_file(&i_path).unwrap_or_else(|_| {
+        println!("ERR: file '{}' does not exists", &i_path.to_string_lossy());
         process::exit(1);
-    }
+    }) {
+        // TODO Proper default output filename generation
+        let o_path = match config.outfile {
+            Some(f) => f,
+            None => format!("{}.uncart", config.file),
+        };
+        let o_path = Path::new(&o_path);
 
-    cart::pack_file(&i_path, &o_path, config.jsonmeta, None, arc4key).unwrap_or_else(|err| {
-        println!("{}", err);
-    });
+        if o_path.is_file() && !config.force {
+            println!("ERR: file '{}' already exists", o_path.to_string_lossy());
+            process::exit(1);
+        }
+
+        cart::unpack_file(i_path, o_path, arc4key).unwrap_or_else(|err| {
+            println!("{}", err);
+        })
+    } else {
+        let o_path = match config.outfile {
+            Some(f) => f,
+            None => format!("{}.cart", config.file),
+        };
+        let o_path = Path::new(&o_path);
+
+        if o_path.is_file() && !config.force {
+            println!("ERR: file '{}' already exists", o_path.to_string_lossy());
+            process::exit(1);
+        }
+
+        cart::pack_file(&i_path, &o_path, config.jsonmeta, None, arc4key).unwrap_or_else(|err| {
+            println!("{}", err);
+        });
+    }
 }
 
 #[derive(Debug)]
