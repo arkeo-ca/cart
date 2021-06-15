@@ -12,7 +12,7 @@ use crypto::sha2::Sha256;
 use crypto::digest::Digest;
 use libflate::zlib::{Encoder, EncodeOptions};
 use json::object;
-use std::io::{self, Read, Write};
+use std::io::{self, Read, Write, Seek, SeekFrom};
 use std::fs::File;
 use std::str;
 use std::path::Path;
@@ -58,7 +58,7 @@ opt_footer: Option<String>, arc4_key: Option<Vec<u8>>) -> Result<(), Box<dyn std
     Ok(())
 }
 
-pub fn unpack_stream(mut istream: impl Read, mut ostream: impl Write, arc4_key_override: Option<Vec<u8>>)
+pub fn unpack_stream(istream: impl Read+Seek, mut ostream: impl Write, arc4_key_override: Option<Vec<u8>>)
 -> Result<(), Box<dyn std::error::Error>> {
     let cart_obj = CartObject::from_cart(istream, false, arc4_key_override);
 
@@ -135,7 +135,7 @@ impl CartObject {
         Ok(CartObject{header, footer, binary: deflated})
     }
 
-    fn from_cart(mut cart_stream: impl Read, metadata: bool, arc4_key: Option<Vec<u8>>) -> Result<CartObject, Box<dyn std::error::Error>> {
+    fn from_cart(mut cart_stream: impl Read+Seek, metadata: bool, arc4_key: Option<Vec<u8>>) -> Result<CartObject, Box<dyn std::error::Error>> {
         let header = CartHeader::unpack(&mut cart_stream, arc4_key);
         let footer = CartFooter::unpack(&mut cart_stream, &header.arc4_key);
         let binary = if metadata {
@@ -262,24 +262,53 @@ impl CartHeader {
 #[derive(Serialize, Deserialize)]
 struct CartFooter {
     opt_footer: String,
-    footer_pos: usize,
+    opt_footer_pos: usize,
 }
 
 impl CartFooter {
-    fn new(opt_footer: Option<String>, footer_pos: usize) -> CartFooter {
+    fn new(opt_footer: Option<String>, opt_footer_pos: usize) -> CartFooter {
         let opt_footer = match opt_footer {
             Some(k) => k,
             None => String::from(""),
         };
 
-        CartFooter{opt_footer, footer_pos}
+        CartFooter{opt_footer, opt_footer_pos}
     }
 
-    fn unpack(cart_stream: impl Read, arc4_key: &Vec<u8>) -> CartFooter {
-        let opt_footer = String::from("");
-        let footer_pos: usize = 0;
+    fn unpack(mut cart_stream: impl Read+Seek, arc4_key: &Vec<u8>) -> CartFooter {
+        // Unpack mandatory footer
+        cart_stream.seek(SeekFrom::End(-28)).unwrap();
 
-        CartFooter{opt_footer, footer_pos}
+        let mut buffer = Vec::with_capacity(4);
+        let _ = cart_stream.by_ref().take(4).read_to_end(&mut buffer);
+        let _magic = str::from_utf8(&buffer).expect("Wrong magic present").to_string();
+
+        let mut buffer = Vec::with_capacity(8);
+        let _ = cart_stream.by_ref().take(8).read_to_end(&mut buffer);
+
+        let mut buffer = Vec::with_capacity(8);
+        let _ = cart_stream.by_ref().take(8).read_to_end(&mut buffer);
+        let opt_footer_pos: usize = bincode::deserialize(&buffer).expect("Wrong length present");
+
+        let mut buffer = Vec::with_capacity(8);
+        let _ = cart_stream.by_ref().take(8).read_to_end(&mut buffer);
+        let opt_footer_len: u64 = bincode::deserialize(&buffer).expect("Wrong length present");
+
+        // Unpack optional footer
+        cart_stream.seek(SeekFrom::Start(opt_footer_pos as u64)).unwrap();
+
+        let mut buffer = Vec::with_capacity(opt_footer_len as usize);
+        let _ = cart_stream.by_ref().take(opt_footer_len).read_to_end(&mut buffer);
+
+        let mut cipher = Rc4::new(&arc4_key);
+        let mut plain_text: Vec<u8> = vec![0; opt_footer_len as usize];
+        cipher.process(&buffer, &mut plain_text[..]);
+        // TODO More elegant error propagation
+        let opt_footer = str::from_utf8(&plain_text).expect("Could not decrypt footer with the given ARC4 key").to_string();
+
+        println!("{:?}", opt_footer);
+
+        CartFooter{opt_footer, opt_footer_pos}
     }
 
     fn pack(&self, arc4_key: &Vec<u8>) -> Vec<u8> {
@@ -293,10 +322,9 @@ impl CartFooter {
         packed_footer.extend(out_footer);
 
         // Pack mandatory footer
-        let opt_footer_pos = self.footer_pos;
         packed_footer.extend(TRAC_MAGIC.as_bytes());
         packed_footer.extend(bincode::serialize(&(0 as u64)).unwrap());
-        packed_footer.extend(bincode::serialize(&(opt_footer_pos as u64)).unwrap());
+        packed_footer.extend(bincode::serialize(&(self.opt_footer_pos as u64)).unwrap());
         packed_footer.extend(bincode::serialize(&(opt_footer_len as u64)).unwrap());
 
         packed_footer
