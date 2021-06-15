@@ -306,8 +306,6 @@ impl CartFooter {
         // TODO More elegant error propagation
         let opt_footer = str::from_utf8(&plain_text).expect("Could not decrypt footer with the given ARC4 key").to_string();
 
-        println!("{:?}", opt_footer);
-
         CartFooter{opt_footer, opt_footer_pos}
     }
 

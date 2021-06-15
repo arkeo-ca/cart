@@ -58,20 +58,20 @@ CaRT's optional header is a OPT_HEADER_LEN bytes RC4 blob of a json serialized h
 
 CaRT's data block is a zlib then RC4 block 
 
-    RC4(ZLIB(block encoded stream ))
+    RC4(ZLIB(block encoded stream))
 
-### Optional Footer (OPTIONAL_FOOTER_LEN bytes)
+### Optional Footer (OPT_FOOTER_LEN bytes)
 
 Like the optional header, CaRT's optional footer is a OPT_FOOTER_LEN bytes RC4 blob of a json serialized footer
 
     RC4(<JSON_SERIALIZED_OPTIONAL_FOOTER>)
 
-###  Mandatory Footer (32 Bytes)
+###  Mandatory Footer (28 Bytes)
 
 CaRT ends its file with a mandatory footer which allow the format to read the footer and return the hashes without reading the whole file
 
-     4s      QQ           Q
-    TRAC<RESERVED><OPT_FOOTER_LEN>
+     4s      Q           Q               Q
+    TRAC<RESERVED><OPT_FOOTER_POS><OPT_FOOTER_LEN>
 
 ## Command line interface 
 
