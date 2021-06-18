@@ -76,15 +76,7 @@ arc4_key_override: Option<Vec<u8>>) -> Result<(), Box<dyn std::error::Error>> {
     let infile = File::open(i_path)?;
     let outfile = File::create(o_path)?;
 
-    // TODO Move default header generation out of here
-    let mut header = match opt_header {
-        Some(j) => json::parse(&j)?,
-        None => object!(),
-    };
-
-    header.insert("name", i_path.file_name().unwrap().to_str())?;
-
-    pack_stream(infile, outfile, Some(header.dump()), opt_footer, arc4_key_override)?;
+    pack_stream(infile, outfile, opt_header, opt_footer, arc4_key_override)?;
 
     Ok(())
 }

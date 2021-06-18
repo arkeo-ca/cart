@@ -4,6 +4,7 @@ use std::process;
 use std::path::Path;
 use argparse::{ArgumentParser, StoreTrue, Store, StoreOption, Print};
 use base64::decode;
+use json::object;
 
 fn main() {
     // Parse configuration variables
@@ -59,7 +60,24 @@ fn main() {
             process::exit(1);
         }
 
-        cart::pack_file(&i_path, &o_path, config.jsonmeta, None, arc4key).unwrap_or_else(|err| {
+        let mut header = match config.jsonmeta {
+            Some(j) => json::parse(&j).unwrap_or_else(|_| {
+                println!("ERR: Invalid JSON metadata");
+                process::exit(1);
+            }),
+            None => object!(),
+        };
+
+        let name;
+        if let Some(n) = config.name {
+            name = n;
+        } else {
+            name = i_path.file_name().unwrap().to_str().unwrap().to_string();
+        }
+
+        header.insert("name", name).unwrap();
+
+        cart::pack_file(&i_path, &o_path, Some(header.dump()), None, arc4key).unwrap_or_else(|err| {
             println!("{}", err);
         });
     }
