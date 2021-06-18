@@ -100,7 +100,14 @@ pub fn get_metadata_only(i_path: &str, arc4_key_override: Option<Vec<u8>>) {
 }
 
 pub fn is_cart(buffer: impl Read) -> bool {
-    true
+    let header = CartHeader::unpack(buffer, None);
+    if let Ok(h) = header {
+        if h.magic == CART_MAGIC && h.version == DEFAULT_VERSION {
+            return true;
+        }
+    }
+
+    false
 }
 
 pub fn is_cart_file(i_path: &Path) -> Result<bool, Box<dyn std::error::Error>> {
@@ -136,7 +143,7 @@ impl CartObject {
     }
 
     fn from_cart(mut cart_stream: impl Read+Seek, metadata: bool, arc4_key: Option<Vec<u8>>) -> Result<CartObject, Box<dyn std::error::Error>> {
-        let header = CartHeader::unpack(&mut cart_stream, arc4_key);
+        let header = CartHeader::unpack(&mut cart_stream, arc4_key)?;
         let footer = CartFooter::unpack(&mut cart_stream, &header.arc4_key);
         let binary = if metadata {
             // TODO Actually parse binary from IOstream
@@ -192,15 +199,15 @@ impl CartHeader {
         CartHeader{magic, version, arc4_key, opt_header}
     }
 
-    fn unpack(mut cart_stream: impl Read, arc4_key_override: Option<Vec<u8>>) -> CartHeader {
+    fn unpack(mut cart_stream: impl Read, arc4_key_override: Option<Vec<u8>>) -> Result<CartHeader, Box<dyn std::error::Error>> {
         // Unpack mandatory header
         let mut buffer = Vec::with_capacity(4);
         let _ = cart_stream.by_ref().take(4).read_to_end(&mut buffer);
-        let magic = str::from_utf8(&buffer).expect("Wrong magic present").to_string();
+        let magic = str::from_utf8(&buffer)?.to_string();
 
         let mut buffer = Vec::with_capacity(2);
         let _ = cart_stream.by_ref().take(2).read_to_end(&mut buffer);
-        let version: i16 = bincode::deserialize(&buffer).expect("Wrong version present");
+        let version: i16 = bincode::deserialize(&buffer)?;
 
         let mut buffer = Vec::with_capacity(8);
         let _ = cart_stream.by_ref().take(8).read_to_end(&mut buffer);
@@ -219,7 +226,7 @@ impl CartHeader {
 
         let mut buffer = Vec::with_capacity(8);
         let _ = cart_stream.by_ref().take(8).read_to_end(&mut buffer);
-        let opt_header_len: u64 = bincode::deserialize(&buffer).expect("Wrong length present");
+        let opt_header_len: u64 = bincode::deserialize(&buffer)?;
 
         // Unpack optional header
         let mut buffer = Vec::with_capacity(opt_header_len as usize);
@@ -229,9 +236,9 @@ impl CartHeader {
         let mut plain_text: Vec<u8> = vec![0; opt_header_len as usize];
         cipher.process(&buffer, &mut plain_text[..]);
         // TODO More elegant error propagation
-        let opt_header = str::from_utf8(&plain_text).expect("Could not decrypt header with the given ARC4 key").to_string();
+        let opt_header = str::from_utf8(&plain_text)?.to_string();
 
-        CartHeader{magic, version, arc4_key, opt_header}
+        Ok(CartHeader{magic, version, arc4_key, opt_header})
     }
 
     fn pack(&self) -> Vec<u8> {
