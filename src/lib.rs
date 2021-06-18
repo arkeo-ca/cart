@@ -10,7 +10,7 @@ use crypto::md5::Md5;
 use crypto::sha1::Sha1;
 use crypto::sha2::Sha256;
 use crypto::digest::Digest;
-use libflate::zlib::{Encoder, EncodeOptions};
+use libflate::zlib::{Encoder, EncodeOptions, Decoder};
 use json::object;
 use std::io::{self, Read, Write, Seek, SeekFrom};
 use std::fs::File;
@@ -21,7 +21,6 @@ const DEFAULT_VERSION: i16 = 1; // TODO Dynamically generate this constant from 
 const DEFAULT_ARC4_KEY: &[u8] = b"\x03\x01\x04\x01\x05\x09\x02\x06\x03\x01\x04\x01\x05\x09\x02\x06";
 const CART_MAGIC: &str = "CART";
 const TRAC_MAGIC: &str = "TRAC";
-const BLOCK_SIZE: usize = 64 * 1024;
 
 
 pub fn pack_stream(mut istream: impl Read, mut ostream: impl Write, opt_header: Option<String>,
@@ -60,7 +59,13 @@ opt_footer: Option<String>, arc4_key: Option<Vec<u8>>) -> Result<(), Box<dyn std
 
 pub fn unpack_stream(istream: impl Read+Seek, mut ostream: impl Write, arc4_key_override: Option<Vec<u8>>)
 -> Result<(), Box<dyn std::error::Error>> {
-    let cart_obj = CartObject::from_cart(istream, false, arc4_key_override);
+    let cart_obj = CartObject::unpack(istream, false, arc4_key_override)?;
+
+    let mut decoder = Decoder::new(&cart_obj.binary[..]).unwrap();
+    let mut inflated = Vec::new();
+    decoder.read_to_end(&mut inflated).unwrap();
+
+    ostream.write_all(&inflated)?;
 
     Ok(())
 }
@@ -142,16 +147,25 @@ impl CartObject {
         Ok(CartObject{header, footer, binary: deflated})
     }
 
-    fn from_cart(mut cart_stream: impl Read+Seek, metadata: bool, arc4_key: Option<Vec<u8>>) -> Result<CartObject, Box<dyn std::error::Error>> {
+    fn unpack(mut cart_stream: impl Read+Seek, metadata: bool, arc4_key: Option<Vec<u8>>) -> Result<CartObject, Box<dyn std::error::Error>> {
         let header = CartHeader::unpack(&mut cart_stream, arc4_key)?;
         let footer = CartFooter::unpack(&mut cart_stream, &header.arc4_key);
         let binary = if metadata {
-            // TODO Actually parse binary from IOstream
             Vec::with_capacity(50)
         } else {
-            Vec::new()
-        };
+            let buffer_start = 38 + header.opt_header.len() as u64;
+            let buffer_len = footer.opt_footer_pos as u64 - buffer_start;
+            cart_stream.seek(SeekFrom::Start(buffer_start)).unwrap();
 
+            let mut buffer = Vec::with_capacity(buffer_len as usize);
+            let _ = cart_stream.by_ref().take(buffer_len).read_to_end(&mut buffer);
+
+            let mut cipher = Rc4::new(&header.arc4_key);
+            let mut plain_text: Vec<u8> = vec![0; buffer_len as usize];
+            cipher.process(&buffer, &mut plain_text[..]);
+
+            plain_text
+        };
 
         Ok(CartObject{header, footer, binary})
     }
