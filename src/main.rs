@@ -1,11 +1,11 @@
 use cart;
 
 use std::process;
-use std::fs::remove_file;
+use std::fs::{read_to_string, remove_file};
 use std::path::Path;
 use argparse::{ArgumentParser, StoreTrue, Store, StoreOption, Print};
 use base64::decode;
-use json::object;
+use json::JsonValue;
 
 fn main() {
     // Parse configuration variables
@@ -80,10 +80,39 @@ fn main() {
             });
         }
     } else {
-        if config.showmeta {
+        // Compile metadata from CLI
+        let mut metadata = match config.jsonmeta {
+            Some(j) => json::parse(&j).unwrap_or_else(|_| {
+                println!("ERR: Invalid JSON metadata");
+                process::exit(1);
+            }),
+            None => JsonValue::new_object(),
+        };
 
+        // Compile metadata from cartmeta file
+        let m_path = format!("{}.cartmeta", config.file);
+        let m_path = Path::new(&m_path);
+        if m_path.is_file() {
+            let contents = read_to_string(m_path).unwrap();
+            for (k, v) in json::parse(&contents).unwrap().entries() {
+                metadata.insert(k, v.to_string()).unwrap();
+            }
         }
 
+        // Only show metadata if requested
+        if config.showmeta {
+            println!("{}", metadata.pretty(4));
+            process::exit(0);
+        }
+
+        // Assign provided filename to metadata if needed
+        let name = match config.name {
+            Some(n) => n,
+            None => i_path.file_name().unwrap().to_str().unwrap().to_string(),
+        };
+        metadata.insert("name", name).unwrap();
+
+        // Generate and validate output path
         let o_path = match config.outfile {
             Some(f) => f,
             None => format!("{}.cart", config.file),
@@ -95,27 +124,12 @@ fn main() {
             process::exit(1);
         }
 
-        let mut header = match config.jsonmeta {
-            Some(j) => json::parse(&j).unwrap_or_else(|_| {
-                println!("ERR: Invalid JSON metadata");
-                process::exit(1);
-            }),
-            None => object!(),
-        };
-
-        let name;
-        if let Some(n) = config.name {
-            name = n;
-        } else {
-            name = i_path.file_name().unwrap().to_str().unwrap().to_string();
-        }
-
-        header.insert("name", name).unwrap();
-
-        cart::pack_file(&i_path, &o_path, Some(header.dump()), None, arc4key).unwrap_or_else(|err| {
+        // Pack the file into CaRT format
+        cart::pack_file(&i_path, &o_path, Some(metadata.dump()), None, arc4key).unwrap_or_else(|err| {
             println!("{}", err);
         });
 
+        // Remove original file if requested
         if config.delete {
             remove_file(&i_path).unwrap_or_else(|_| {
                 println!("ERR: Could not delete original file");
