@@ -36,9 +36,22 @@ fn main() {
     // Process provided file
     let i_path = Path::new(&config.file);
     if cart::is_cart_file(&i_path).unwrap_or_else(|_| {
-        println!("ERR: file '{}' does not exists", &i_path.to_string_lossy());
+        println!("ERR: File '{}' does not exists", &i_path.to_string_lossy());
         process::exit(1);
     }) {
+        if config.showmeta {
+            let metadata = cart::examine_file(i_path, arc4key);
+            match metadata {
+                Ok(s) => {
+                    println!("{}", s);
+                },
+                Err(err) => {
+                    println!("ERR: Problem parsing metadata ({})", err);
+                }
+            }
+            process::exit(0);
+        }
+
         // TODO Proper default output filename generation
         let o_path = match config.outfile {
             Some(f) => f,
@@ -47,7 +60,7 @@ fn main() {
         let o_path = Path::new(&o_path);
 
         if o_path.is_file() && !config.force {
-            println!("ERR: file '{}' already exists", o_path.to_string_lossy());
+            println!("ERR: File '{}' already exists", o_path.to_string_lossy());
             process::exit(1);
         }
 
@@ -62,6 +75,10 @@ fn main() {
             });
         }
     } else {
+        if config.showmeta {
+
+        }
+
         let o_path = match config.outfile {
             Some(f) => f,
             None => format!("{}.cart", config.file),
@@ -69,7 +86,7 @@ fn main() {
         let o_path = Path::new(&o_path);
 
         if o_path.is_file() && !config.force {
-            println!("ERR: file '{}' already exists", o_path.to_string_lossy());
+            println!("ERR: File '{}' already exists", o_path.to_string_lossy());
             process::exit(1);
         }
 

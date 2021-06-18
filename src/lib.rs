@@ -11,7 +11,7 @@ use crypto::sha1::Sha1;
 use crypto::sha2::Sha256;
 use crypto::digest::Digest;
 use libflate::zlib::{Encoder, EncodeOptions, Decoder};
-use json::object;
+use json::JsonValue;
 use std::io::{self, Read, Write, Seek, SeekFrom};
 use std::fs::File;
 use std::str;
@@ -31,7 +31,7 @@ opt_footer: Option<String>, arc4_key: Option<Vec<u8>>) -> Result<(), Box<dyn std
 
     let mut footer = match opt_footer {
         Some(j) => json::parse(&j)?,
-        None => object!(),
+        None => JsonValue::new_object(),
     };
 
     let mut md5_hasher = Md5::new();
@@ -59,7 +59,7 @@ opt_footer: Option<String>, arc4_key: Option<Vec<u8>>) -> Result<(), Box<dyn std
 
 pub fn unpack_stream(istream: impl Read+Seek, mut ostream: impl Write, arc4_key_override: Option<Vec<u8>>)
 -> Result<(), Box<dyn std::error::Error>> {
-    let cart_obj = CartObject::unpack(istream, false, arc4_key_override)?;
+    let cart_obj = CartObject::unpack(istream, arc4_key_override)?;
 
     let mut decoder = Decoder::new(&cart_obj.binary[..]).unwrap();
     let mut inflated = Vec::new();
@@ -92,12 +92,32 @@ pub fn unpack_file(i_path: &Path, o_path: &Path, arc4_key_override: Option<Vec<u
     Ok(())
 }
 
-pub fn get_metadata_only(i_path: &str, arc4_key_override: Option<Vec<u8>>) {
 
+pub fn get_metadata_only(mut i_stream: impl Read+Seek, arc4_key_override: Option<Vec<u8>>)
+-> Result<String, Box<dyn std::error::Error>> {
+    let header = CartHeader::unpack(&mut i_stream, arc4_key_override)?;
+    let footer = CartFooter::unpack(&mut i_stream, &header.arc4_key);
+
+    let mut metadata = json::parse(&header.opt_header)?;
+    let extra_metadata = json::parse(&footer.opt_footer)?;
+
+    for (k, v) in extra_metadata.entries() {
+        metadata.insert(k, v.as_str())?;
+    }
+
+    Ok(metadata.pretty(4))
 }
 
-pub fn is_cart(buffer: impl Read) -> bool {
-    let header = CartHeader::unpack(buffer, None);
+
+pub fn examine_file(i_path: &Path, arc4_key_override: Option<Vec<u8>>)
+-> Result<String, Box<dyn std::error::Error>> {
+    let infile = File::open(i_path)?;
+
+    Ok(get_metadata_only(infile, arc4_key_override)?)
+}
+
+pub fn is_cart(i_stream: impl Read) -> bool {
+    let header = CartHeader::unpack(i_stream, None);
     if let Ok(h) = header {
         if h.magic == CART_MAGIC && h.version == DEFAULT_VERSION {
             return true;
@@ -139,12 +159,10 @@ impl CartObject {
         Ok(CartObject{header, footer, binary: deflated})
     }
 
-    fn unpack(mut cart_stream: impl Read+Seek, metadata: bool, arc4_key: Option<Vec<u8>>) -> Result<CartObject, Box<dyn std::error::Error>> {
+    fn unpack(mut cart_stream: impl Read+Seek, arc4_key: Option<Vec<u8>>) -> Result<CartObject, Box<dyn std::error::Error>> {
         let header = CartHeader::unpack(&mut cart_stream, arc4_key)?;
         let footer = CartFooter::unpack(&mut cart_stream, &header.arc4_key);
-        let binary = if metadata {
-            Vec::with_capacity(50)
-        } else {
+        let binary = {
             let buffer_start = 38 + header.opt_header.len() as u64;
             let buffer_len = footer.opt_footer_pos as u64 - buffer_start;
             cart_stream.seek(SeekFrom::Start(buffer_start)).unwrap();
