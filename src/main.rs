@@ -45,6 +45,11 @@ fn main() {
         };
         let o_path = Path::new(&o_path);
 
+        if o_path.is_file() && !config.force {
+            println!("ERR: file '{}' already exists", o_path.to_string_lossy());
+            process::exit(1);
+        }
+
         cart::unpack_file(i_path, o_path, arc4key).unwrap_or_else(|err| {
             println!("{}", err);
         })

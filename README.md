@@ -88,18 +88,20 @@ These are the options available in the CaRT CLI:
     Usage: cart [options] file1 file2 ... fileN
     
     Options:
-      --version             show program's version number and exit
+      
       -h, --help            show this help message and exit
+      -v, --version         show program's version number and exit
+      -d, --delete          Delete original after operation succeeded
       -f, --force           Replace output file if it already exists
       -i, --ignore          Ignore RC4 key from conf file
-      -j JSONMETA, --jsonmeta=JSONMETA
+      -j JSONMETA, --jsonmeta JSONMETA
                             Provide header metadata as json blob
       -k KEY, --key=KEY     Use private RC4 key (base64 encoded). Same key must be
                             provided to unCaRT.
       -m, --meta            Keep metadata around when extracting CaRTs
-      -n FILENAME, --name=FILENAME
+      -n FILENAME, --name FILENAME
                             Use this value as metadata filename
-      -o OUTFILE, --outfile=OUTFILE
+      -o OUTFILE, --outfile OUTFILE
                             Set output file
       -s, --showmeta        Only show the file metadata
 
