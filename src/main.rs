@@ -1,6 +1,7 @@
 use cart;
 
 use std::process;
+use std::fs::remove_file;
 use std::path::Path;
 use argparse::{ArgumentParser, StoreTrue, Store, StoreOption, Print};
 use base64::decode;
@@ -52,7 +53,14 @@ fn main() {
 
         cart::unpack_file(i_path, o_path, arc4key).unwrap_or_else(|err| {
             println!("{}", err);
-        })
+        });
+
+        if config.delete {
+            remove_file(&i_path).unwrap_or_else(|_| {
+                println!("ERR: Could not delete original file");
+                process::exit(1);
+            });
+        }
     } else {
         let o_path = match config.outfile {
             Some(f) => f,
@@ -85,6 +93,13 @@ fn main() {
         cart::pack_file(&i_path, &o_path, Some(header.dump()), None, arc4key).unwrap_or_else(|err| {
             println!("{}", err);
         });
+
+        if config.delete {
+            remove_file(&i_path).unwrap_or_else(|_| {
+                println!("ERR: Could not delete original file");
+                process::exit(1);
+            });
+        }
     }
 }
 
