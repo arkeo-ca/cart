@@ -52,10 +52,15 @@ fn main() {
             process::exit(0);
         }
 
-        // TODO Proper default output filename generation
         let o_path = match config.outfile {
             Some(f) => f,
-            None => format!("{}.uncart", config.file),
+            None => {
+                if config.file.ends_with(".cart") {
+                    String::from(&config.file[0..config.file.len() - 5])
+                } else {
+                    String::from(format!("{}.uncart", config.file))
+                }
+            },
         };
         let o_path = Path::new(&o_path);
 
