@@ -1,7 +1,7 @@
 use cart;
 
 use std::process;
-use std::fs::{read_to_string, remove_file};
+use std::fs::{read_to_string, remove_file, write};
 use std::path::Path;
 use argparse::{ArgumentParser, StoreTrue, Store, StoreOption, Print};
 use base64::decode;
@@ -69,9 +69,25 @@ fn main() {
             process::exit(1);
         }
 
-        cart::unpack_file(i_path, o_path, arc4key).unwrap_or_else(|err| {
+        let metadata = cart::unpack_file(i_path, o_path, arc4key).unwrap_or_else(|err| {
             println!("{}", err);
+            JsonValue::new_object()
         });
+
+        if config.meta {
+            let m_path = i_path.with_extension("cartmeta");
+            let m_path = Path::new(&m_path);
+
+            if m_path.is_file() && !config.force {
+                println!("ERR: File '{}' already exists", m_path.to_string_lossy());
+                process::exit(1);
+            }
+
+            write(m_path, metadata.dump()).unwrap_or_else(|_| {
+                println!("ERR: Could not create metadata file");
+                process::exit(1);
+            });
+        }
 
         if config.delete {
             remove_file(&i_path).unwrap_or_else(|_| {

@@ -58,7 +58,7 @@ opt_footer: Option<String>, arc4_key: Option<Vec<u8>>) -> Result<(), Box<dyn std
 }
 
 pub fn unpack_stream(istream: impl Read+Seek, mut ostream: impl Write, arc4_key_override: Option<Vec<u8>>)
--> Result<(), Box<dyn std::error::Error>> {
+-> Result<JsonValue, Box<dyn std::error::Error>> {
     let cart_obj = CartObject::unpack(istream, arc4_key_override)?;
 
     let mut decoder = Decoder::new(&cart_obj.binary[..]).unwrap();
@@ -67,7 +67,14 @@ pub fn unpack_stream(istream: impl Read+Seek, mut ostream: impl Write, arc4_key_
 
     ostream.write_all(&inflated)?;
 
-    Ok(())
+    let mut metadata = json::parse(&cart_obj.header.opt_header)?;
+    let extra_metadata = json::parse(&cart_obj.footer.opt_footer)?;
+
+    for (k, v) in extra_metadata.entries() {
+        metadata.insert(k, v.as_str())?;
+    }
+
+    Ok(metadata)
 }
 
 pub fn pack_file(i_path: &Path, o_path: &Path, opt_header: Option<String>, opt_footer: Option<String>,
@@ -82,14 +89,14 @@ arc4_key_override: Option<Vec<u8>>) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 pub fn unpack_file(i_path: &Path, o_path: &Path, arc4_key_override: Option<Vec<u8>>)
--> Result<(), Box<dyn std::error::Error>> {
+-> Result<JsonValue, Box<dyn std::error::Error>> {
 
     let infile = File::open(i_path)?;
     let outfile = File::create(o_path)?;
 
-    unpack_stream(infile, outfile, arc4_key_override)?;
+    let metadata = unpack_stream(infile, outfile, arc4_key_override)?;
 
-    Ok(())
+    Ok(metadata)
 }
 
 
