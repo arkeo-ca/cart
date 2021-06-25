@@ -3,6 +3,8 @@ extern crate crypto;
 extern crate libflate;
 extern crate json;
 
+mod globals;
+
 use serde::{Serialize, Deserialize};
 use crypto::symmetriccipher::SynchronousStreamCipher;
 use crypto::rc4::Rc4;
@@ -16,12 +18,6 @@ use std::io::{self, Read, Write, Seek, SeekFrom};
 use std::fs::File;
 use std::str;
 use std::path::Path;
-
-const DEFAULT_VERSION: i16 = 1; // TODO Dynamically generate this constant from cargo package
-const DEFAULT_ARC4_KEY: &[u8] = b"\x03\x01\x04\x01\x05\x09\x02\x06\x03\x01\x04\x01\x05\x09\x02\x06";
-const CART_MAGIC: &str = "CART";
-const TRAC_MAGIC: &str = "TRAC";
-
 
 pub fn pack_stream(mut istream: impl Read, mut ostream: impl Write, opt_header: Option<JsonValue>,
 opt_footer: Option<JsonValue>, arc4_key: Option<Vec<u8>>) -> Result<(), Box<dyn std::error::Error>> {
@@ -127,7 +123,7 @@ pub fn is_cart(mut i_stream: impl Read) -> bool {
     let magic = str::from_utf8(&buffer);
     match magic {
         Ok(m) => {
-            if m != CART_MAGIC {
+            if m != globals::CART_MAGIC {
                 return false
             }
         },
@@ -138,7 +134,7 @@ pub fn is_cart(mut i_stream: impl Read) -> bool {
     let _ = &mut i_stream.by_ref().take(2).read_to_end(&mut buffer);
     let version: i16 = bincode::deserialize(&buffer).unwrap_or(0);
 
-    if version != DEFAULT_VERSION {
+    if version != globals::DEFAULT_VERSION {
         return false
     }
 
@@ -163,7 +159,7 @@ impl CartObject {
     opt_footer: Option<String>, version: Option<i16>) -> Result<CartObject, Box<dyn std::error::Error>>{
         let arc4_key = match arc4_key {
             Some(k) => k,
-            None => DEFAULT_ARC4_KEY.to_vec(),
+            None => globals::DEFAULT_ARC4_KEY.to_vec(),
         };
 
         let options = EncodeOptions::new().fixed_huffman_codes();
@@ -227,10 +223,10 @@ struct CartHeader {
 
 impl CartHeader {
     fn new(arc4_key: Vec<u8>, opt_header: Option<String>, version: Option<i16>) -> CartHeader {
-        let magic = String::from(CART_MAGIC);
+        let magic = String::from(globals::CART_MAGIC);
         let version = match version {
             Some(k) => k,
-            None => DEFAULT_VERSION,
+            None => globals::DEFAULT_VERSION,
         };
 
         let opt_header = match opt_header {
@@ -259,7 +255,7 @@ impl CartHeader {
         let mut arc4_key = buffer.to_vec();
 
         if arc4_key == vec![0; 16] {
-            arc4_key = arc4_key_override.unwrap_or(DEFAULT_ARC4_KEY.to_vec());
+            arc4_key = arc4_key_override.unwrap_or(globals::DEFAULT_ARC4_KEY.to_vec());
         }
 
         let mut buffer = Vec::with_capacity(8);
@@ -287,7 +283,7 @@ impl CartHeader {
         packed_header.extend(self.magic.as_bytes());
         packed_header.extend(bincode::serialize(&self.version).unwrap());
         packed_header.extend(bincode::serialize(&(0 as u64)).unwrap());
-        if self.arc4_key == DEFAULT_ARC4_KEY.to_vec() {
+        if self.arc4_key == globals::DEFAULT_ARC4_KEY.to_vec() {
             packed_header.extend(&self.arc4_key);
         } else {
             packed_header.extend(bincode::serialize(&(0 as u128)).unwrap());
@@ -365,7 +361,7 @@ impl CartFooter {
         packed_footer.extend(out_footer);
 
         // Pack mandatory footer
-        packed_footer.extend(TRAC_MAGIC.as_bytes());
+        packed_footer.extend(globals::TRAC_MAGIC.as_bytes());
         packed_footer.extend(bincode::serialize(&(0 as u64)).unwrap());
         packed_footer.extend(bincode::serialize(&(self.opt_footer_pos as u64)).unwrap());
         packed_footer.extend(bincode::serialize(&(opt_footer_len as u64)).unwrap());
