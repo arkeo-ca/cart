@@ -1,6 +1,7 @@
 use std::path::Path;
 use configparser::ini::Ini;
 use argparse::{ArgumentParser, StoreTrue, Store, StoreOption, Print};
+use json::JsonValue;
 
 #[derive(Debug)]
 pub struct Config {
@@ -13,7 +14,8 @@ pub struct Config {
     pub jsonmeta: Option<String>,
     pub key: Option<String>,
     pub name: Option<String>,
-    pub outfile: Option<String>
+    pub outfile: Option<String>,
+    pub default_header: JsonValue,
 }
 
 impl Config {
@@ -31,6 +33,8 @@ impl Config {
         let mut name: Option<String> = None;
         let mut outfile: Option<String> = None;
 
+        let mut default_header = JsonValue::new_object();
+
         {
             let env_home = format!("{}/.cart/cart.cfg", std::env::var("HOME").unwrap());
             let c_path = Path::new(&env_home);
@@ -38,7 +42,7 @@ impl Config {
             let mut cp = Ini::new();
             let map = cp.load(c_path);
 
-            if let Ok(_) = map {
+            if let Ok(m) = map {
                 if let Some(v) = cp.getbool("global", "keep_meta").unwrap() {
                     meta = v;
                 }
@@ -49,6 +53,8 @@ impl Config {
                     delete = v;
                 }
                 key = cp.get("global", "rc4_key");
+
+                default_header = json::from(m["default_header"].clone());
             }
         }
 
@@ -74,7 +80,7 @@ impl Config {
             key = None;
         }
 
-        Ok(Config {file, delete, force, ignore, meta, showmeta, jsonmeta, key, name, outfile})
+        Ok(Config {file, delete, force, ignore, meta, showmeta, jsonmeta, key, name, outfile, default_header})
     }
 }
 

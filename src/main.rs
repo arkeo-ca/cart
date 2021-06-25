@@ -1,11 +1,12 @@
 use cart;
+use base64;
+
 mod config;
 
 use std::process;
 use std::fs::{read_to_string, remove_file, write};
 use std::path::Path;
-use base64;
-use json::JsonValue;
+use json::object;
 
 fn main() {
     // Parse configuration variables
@@ -86,23 +87,47 @@ fn main() {
             });
         }
     } else {
-        // Compile metadata from CLI
-        let mut metadata = match params.jsonmeta {
-            Some(j) => json::parse(&j).unwrap_or_else(|_| {
-                println!("ERR: Invalid JSON metadata");
-                process::exit(1);
-            }),
-            None => JsonValue::new_object(),
+        // Generate default filename from input path
+        let mut metadata = object!{
+            name: i_path.file_name().unwrap().to_string_lossy().to_string()
         };
 
-        // Compile metadata from cartmeta file
+        // Compile metadata from cartmeta file (simply carry on if there is no cartmeta file)
         let m_path = format!("{}.cartmeta", params.file);
         let m_path = Path::new(&m_path);
         if m_path.is_file() {
-            let contents = read_to_string(m_path).unwrap();
-            for (k, v) in json::parse(&contents).unwrap().entries() {
+            let contents = read_to_string(m_path).unwrap_or_else(|err|{
+                eprintln!("ERR: Could not read cartmeta file ({})", err);
+                process::exit(1);
+            });
+            let json_contents = json::parse(&contents).unwrap_or_else(|err|{
+                eprintln!("ERR: Could not parse cartmeta file ({})", err);
+                process::exit(1);
+            });
+            for (k, v) in json_contents.entries() {
                 metadata.insert(k, v.to_string()).unwrap();
             }
+        }
+
+        // Compile metadata from CLI
+        if let Some(j) = params.jsonmeta {
+            let json_contents = json::parse(&j).unwrap_or_else(|_| {
+                eprintln!("ERR: Invalid JSON metadata");
+                process::exit(1);
+            });
+            for (k, v) in json_contents.entries() {
+                metadata.insert(k, v.to_string()).unwrap();
+            }
+        }
+
+        // Compile metadata from config file
+        for (k, v) in params.default_header.entries() {
+            metadata.insert(k, v.to_string()).unwrap();
+        }
+
+        // Assign provided filename to metadata if needed
+        if let Some(n) = params.name {
+            metadata.insert("name", n).unwrap();
         }
 
         // Only show metadata if requested
@@ -110,10 +135,6 @@ fn main() {
             println!("{}", metadata.pretty(4));
             process::exit(0);
         }
-
-        // Assign provided filename to metadata if needed
-        let name = params.name.unwrap_or(i_path.file_name().unwrap().to_string_lossy().to_string());
-        metadata.insert("name", name).unwrap();
 
         // Generate and validate output path
         let o_path = params.outfile.unwrap_or(format!("{}.cart", params.file));
@@ -124,8 +145,9 @@ fn main() {
         }
 
         // Pack the file into CaRT format
-        cart::pack_file(&i_path, &o_path, Some(metadata.dump()), None, arc4key).unwrap_or_else(|err| {
+        cart::pack_file(&i_path, &o_path, Some(metadata), None, arc4key).unwrap_or_else(|err| {
             eprintln!("ERR: Encountered error during packing ({})", err);
+            process::exit(1);
         });
     }
 

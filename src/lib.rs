@@ -23,16 +23,14 @@ const CART_MAGIC: &str = "CART";
 const TRAC_MAGIC: &str = "TRAC";
 
 
-pub fn pack_stream(mut istream: impl Read, mut ostream: impl Write, opt_header: Option<String>,
-opt_footer: Option<String>, arc4_key: Option<Vec<u8>>) -> Result<(), Box<dyn std::error::Error>> {
+pub fn pack_stream(mut istream: impl Read, mut ostream: impl Write, opt_header: Option<JsonValue>,
+opt_footer: Option<JsonValue>, arc4_key: Option<Vec<u8>>) -> Result<(), Box<dyn std::error::Error>> {
 
     let mut binary: Vec<u8> = Vec::new();
     istream.by_ref().read_to_end(&mut binary)?;
 
-    let mut footer = match opt_footer {
-        Some(j) => json::parse(&j)?,
-        None => JsonValue::new_object(),
-    };
+    let header = opt_header.map(|h| {h.dump()});
+    let mut footer = opt_footer.unwrap_or(JsonValue::new_object());
 
     let mut md5_hasher = Md5::new();
     md5_hasher.input(&binary);
@@ -51,7 +49,7 @@ opt_footer: Option<String>, arc4_key: Option<Vec<u8>>) -> Result<(), Box<dyn std
     footer.insert("sha1", sha1_digest)?;
     footer.insert("sha256", sha256_digest)?;
 
-    let cart_obj = CartObject::new(binary, arc4_key, opt_header, Some(footer.dump()), None)?;
+    let cart_obj = CartObject::new(binary, arc4_key, header, Some(footer.dump()), None)?;
     ostream.write_all(&cart_obj.pack()[..])?;
 
     Ok(())
@@ -77,7 +75,7 @@ pub fn unpack_stream(istream: impl Read+Seek, mut ostream: impl Write, arc4_key_
     Ok(metadata)
 }
 
-pub fn pack_file(i_path: &Path, o_path: &Path, opt_header: Option<String>, opt_footer: Option<String>,
+pub fn pack_file(i_path: &Path, o_path: &Path, opt_header: Option<JsonValue>, opt_footer: Option<JsonValue>,
 arc4_key_override: Option<Vec<u8>>) -> Result<(), Box<dyn std::error::Error>> {
 
     let infile = File::open(i_path)?;

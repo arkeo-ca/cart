@@ -114,6 +114,8 @@ The CaRT configuration file look like this:
     keep_meta: True
     # force is an equivalent to -f in the CLI
     force: True
+    # delete is an equivalent to -d in the CLI
+    delete: True
     
     # default_header is a key/value pair of data to be added to the CaRT in the optional header
     [default_header]
