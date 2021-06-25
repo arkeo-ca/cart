@@ -123,15 +123,28 @@ pub fn examine_file(i_path: &Path, arc4_key_override: Option<Vec<u8>>)
     Ok(get_metadata_only(infile, arc4_key_override)?)
 }
 
-pub fn is_cart(i_stream: impl Read) -> bool {
-    let header = CartHeader::unpack(i_stream, None);
-    if let Ok(h) = header {
-        if h.magic == CART_MAGIC && h.version == DEFAULT_VERSION {
-            return true;
-        }
+pub fn is_cart(mut i_stream: impl Read) -> bool {
+    let mut buffer = Vec::with_capacity(4);
+    let _ = &mut i_stream.by_ref().take(4).read_to_end(&mut buffer);
+    let magic = str::from_utf8(&buffer);
+    match magic {
+        Ok(m) => {
+            if m != CART_MAGIC {
+                return false
+            }
+        },
+        Err(_) => return false
     }
 
-    false
+    let mut buffer = Vec::with_capacity(2);
+    let _ = &mut i_stream.by_ref().take(2).read_to_end(&mut buffer);
+    let version: i16 = bincode::deserialize(&buffer).unwrap_or(0);
+
+    if version != DEFAULT_VERSION {
+        return false
+    }
+
+    true
 }
 
 pub fn is_cart_file(i_path: &Path) -> Result<bool, Box<dyn std::error::Error>> {
@@ -248,11 +261,7 @@ impl CartHeader {
         let mut arc4_key = buffer.to_vec();
 
         if arc4_key == vec![0; 16] {
-            arc4_key = if let Some(k) = arc4_key_override {
-                k
-            } else {
-                DEFAULT_ARC4_KEY.to_vec()
-            };
+            arc4_key = arc4_key_override.unwrap_or(DEFAULT_ARC4_KEY.to_vec());
         }
 
         let mut buffer = Vec::with_capacity(8);
