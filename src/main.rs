@@ -6,6 +6,7 @@ use std::path::Path;
 use argparse::{ArgumentParser, StoreTrue, Store, StoreOption, Print};
 use base64::decode;
 use json::JsonValue;
+use configparser::ini::Ini;
 
 fn main() {
     // Parse configuration variables
@@ -170,7 +171,7 @@ struct Config {
 }
 
 impl Config {
-    fn new() -> Result<Config, &'static str> {
+    fn new() -> Result<Config, Box<dyn std::error::Error>> {
         let mut file: String = String::from("");
 
         let mut delete = false;
@@ -184,6 +185,26 @@ impl Config {
         let mut name: Option<String> = None;
         let mut outfile: Option<String> = None;
 
+        {
+            let env_home = format!("{}/.cart/cart.cfg", std::env::var("HOME").unwrap());
+            let c_path = Path::new(&env_home);
+
+            let mut cp = Ini::new();
+            let map = cp.load(c_path);
+
+            if let Ok(_) = map {
+                if let Some(v) = cp.getbool("global", "keep_meta").unwrap() {
+                    meta = v;
+                }
+                if let Some(v) = cp.getbool("global", "force").unwrap() {
+                    force = v;
+                }
+                if let Some(v) = cp.getbool("global", "delete").unwrap() {
+                    delete = v;
+                }
+                key = cp.get("global", "rc4_key");
+            }
+        }
 
         {
             let mut ap = ArgumentParser::new();
@@ -201,6 +222,10 @@ impl Config {
             ap.refer(&mut showmeta).add_option(&["-s", "--showmeta"], StoreTrue, "Only show the file metadata");
 
             ap.parse_args_or_exit();
+        }
+
+        if ignore {
+            key = None;
         }
 
         Ok(Config {file, delete, force, ignore, meta, showmeta, jsonmeta, key, name, outfile})
