@@ -11,9 +11,10 @@ This is a short list to organize the different things to do for this project
 
 ### In Progress
 
-- [ ] Splinter cartobjects into own rust file #maint @arkeo-ca
+- [ ] Cleanup library code #maint @arkeo-ca
 
 ### Done ✓
 
 - [X] Read from configuration file #feat @arkeo-ca
 - [X] Create globals rust file #maint @arkeo-ca
+- [X] Splinter cartobjects into own rust file #maint @arkeo-ca

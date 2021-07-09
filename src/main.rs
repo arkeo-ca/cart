@@ -50,7 +50,7 @@ fn main() {
         // Extract metadata from CaRT and print to screen
         if params.showmeta {
             match cart::examine_file(i_path, arc4key) {
-                Ok(s) => println!("{}", s),
+                Ok(s) => println!("{}", s.pretty(4)),
                 Err(err) => eprintln!("ERR: Problem parsing metadata ({})", err),
             }
             process::exit(0);
