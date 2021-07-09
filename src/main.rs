@@ -136,6 +136,12 @@ fn main() {
             process::exit(0);
         }
 
+        // Remove default footer metadata to avoid duplication
+        metadata.remove("length");
+        metadata.remove("md5");
+        metadata.remove("sha1");
+        metadata.remove("sha256");
+
         // Generate and validate output path
         let o_path = params.outfile.unwrap_or(format!("{}.cart", params.file));
         let o_path = Path::new(&o_path);
