@@ -1,11 +1,11 @@
 use std::path::Path;
 use configparser::ini::Ini;
-use argparse::{ArgumentParser, StoreTrue, Store, StoreOption, Print};
+use argparse::{ArgumentParser, StoreTrue, List, StoreOption, Print};
 use json::JsonValue;
 
 #[derive(Debug)]
 pub struct Config {
-    pub file: String,
+    pub file: Vec<String>,
     pub delete: bool,
     pub force: bool,
     pub ignore: bool,
@@ -20,7 +20,7 @@ pub struct Config {
 
 impl Config {
     pub fn new() -> Result<Config, Box<dyn std::error::Error>> {
-        let mut file: String = String::from("");
+        let mut file = Vec::new();
 
         let mut delete = false;
         let mut force = false;
@@ -61,7 +61,7 @@ impl Config {
         {
             let mut ap = ArgumentParser::new();
 
-            ap.refer(&mut file).add_argument("file", Store, "");
+            ap.refer(&mut file).add_argument("file", List, "");
             ap.add_option(&["-v", "--version"], Print(format!("CaRT v{} (Rust)", env!("CARGO_PKG_VERSION").to_string())), "Show program's version number and exit");
             ap.refer(&mut delete).add_option(&["-d", "--delete"], StoreTrue, "Delete original after operation succeeded");
             ap.refer(&mut force).add_option(&["-f", "--force"], StoreTrue, "Replace output file if it already exists");
