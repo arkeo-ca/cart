@@ -18,15 +18,12 @@ pub struct CartObject {
 impl CartObject {
     pub fn new(binary: Vec<u8>, arc4_key: Option<Vec<u8>>, opt_header: Option<String>,
     opt_footer: Option<String>, version: Option<i16>) -> Result<CartObject, Box<dyn std::error::Error>>{
-        let arc4_key = match arc4_key {
-            Some(k) => k,
-            None => globals::DEFAULT_ARC4_KEY.to_vec(),
-        };
+        let arc4_key = arc4_key.unwrap_or(globals::DEFAULT_ARC4_KEY.to_vec());
 
         let options = EncodeOptions::new().fixed_huffman_codes();
-        let mut encoder = Encoder::with_options(Vec::new(), options).unwrap();
-        io::copy(&mut binary.as_slice(), &mut encoder).unwrap();
-        let deflated = encoder.finish().into_result().unwrap();
+        let mut encoder = Encoder::with_options(Vec::new(), options)?;
+        io::copy(&mut binary.as_slice(), &mut encoder)?;
+        let deflated = encoder.finish().into_result()?;
 
         let header = CartHeader::new(arc4_key, opt_header, version);
         let footer = CartFooter::new(opt_footer, 38 + header.opt_header.len() + deflated.len());
@@ -36,11 +33,11 @@ impl CartObject {
 
     pub fn unpack(mut cart_stream: impl Read+Seek, arc4_key: Option<Vec<u8>>) -> Result<CartObject, Box<dyn std::error::Error>> {
         let header = CartHeader::unpack(&mut cart_stream, arc4_key)?;
-        let footer = CartFooter::unpack(&mut cart_stream, &header.arc4_key);
+        let footer = CartFooter::unpack(&mut cart_stream, &header.arc4_key)?;
         let binary = {
             let buffer_start = 38 + header.opt_header.len() as u64;
             let buffer_len = footer.opt_footer_pos as u64 - buffer_start;
-            cart_stream.seek(SeekFrom::Start(buffer_start)).unwrap();
+            cart_stream.seek(SeekFrom::Start(buffer_start))?;
 
             let mut buffer = Vec::with_capacity(buffer_len as usize);
             let _ = cart_stream.by_ref().take(buffer_len).read_to_end(&mut buffer);
@@ -55,11 +52,11 @@ impl CartObject {
         Ok(CartObject{header, footer, binary})
     }
 
-    pub fn pack(&self) -> Vec<u8> {
+    pub fn pack(&self) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         let mut packed_cart: Vec<u8> = Vec::new();
 
         // Pack header
-        packed_cart.extend(self.header.pack());
+        packed_cart.extend(self.header.pack()?);
 
         // Pack binary
         let mut cipher = Rc4::new(&self.header.arc4_key);
@@ -68,17 +65,17 @@ impl CartObject {
         packed_cart.extend(out_binary);
 
         // Pack footer
-        packed_cart.extend(self.footer.pack(&self.header.arc4_key));
+        packed_cart.extend(self.footer.pack(&self.header.arc4_key)?);
 
-        packed_cart
+        Ok(packed_cart)
     }
 
-    pub fn raw_binary(&self) -> Vec<u8> {
-        let mut decoder = Decoder::new(&self.binary[..]).unwrap();
+    pub fn raw_binary(&self) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+        let mut decoder = Decoder::new(&self.binary[..])?;
         let mut inflated = Vec::new();
-        decoder.read_to_end(&mut inflated).unwrap();
+        decoder.read_to_end(&mut inflated)?;
 
-        inflated
+        Ok(inflated)
     }
 
     pub fn metadata(&self) -> Result<JsonValue, Box<dyn std::error::Error>>{
@@ -103,15 +100,8 @@ struct CartHeader {
 impl CartHeader {
     fn new(arc4_key: Vec<u8>, opt_header: Option<String>, version: Option<i16>) -> CartHeader {
         let magic = String::from(globals::CART_MAGIC);
-        let version = match version {
-            Some(k) => k,
-            None => globals::DEFAULT_VERSION,
-        };
-
-        let opt_header = match opt_header {
-            Some(k) => k,
-            None => String::from(""),
-        };
+        let version = version.unwrap_or(globals::DEFAULT_VERSION);
+        let opt_header = opt_header.unwrap_or(String::from(""));
 
         CartHeader{magic, version, arc4_key, opt_header}
     }
@@ -148,26 +138,25 @@ impl CartHeader {
         let mut cipher = Rc4::new(&arc4_key);
         let mut plain_text: Vec<u8> = vec![0; opt_header_len as usize];
         cipher.process(&buffer, &mut plain_text[..]);
-        // TODO More elegant error propagation
         let opt_header = str::from_utf8(&plain_text)?.to_string();
 
         Ok(CartHeader{magic, version, arc4_key, opt_header})
     }
 
-    fn pack(&self) -> Vec<u8> {
+    fn pack(&self) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         let mut packed_header: Vec<u8> = Vec::new();
         let opt_header_len = self.opt_header.len();
 
         // Pack mandatory header
         packed_header.extend(self.magic.as_bytes());
-        packed_header.extend(bincode::serialize(&self.version).unwrap());
-        packed_header.extend(bincode::serialize(&(0 as u64)).unwrap());
+        packed_header.extend(bincode::serialize(&self.version)?);
+        packed_header.extend(bincode::serialize(&(0 as u64))?);
         if self.arc4_key == globals::DEFAULT_ARC4_KEY.to_vec() {
             packed_header.extend(&self.arc4_key);
         } else {
-            packed_header.extend(bincode::serialize(&(0 as u128)).unwrap());
+            packed_header.extend(bincode::serialize(&(0 as u128))?);
         }
-        packed_header.extend(bincode::serialize(&(opt_header_len as u64)).unwrap());
+        packed_header.extend(bincode::serialize(&(opt_header_len as u64))?);
 
         // Pack optional header
         let mut cipher = Rc4::new(&self.arc4_key);
@@ -175,7 +164,7 @@ impl CartHeader {
         cipher.process(self.opt_header.as_bytes(), &mut out_header[..]);
         packed_header.extend(out_header);
 
-        packed_header
+        Ok(packed_header)
     }
 }
 
@@ -195,27 +184,27 @@ impl CartFooter {
         CartFooter{opt_footer, opt_footer_pos}
     }
 
-    fn unpack(mut cart_stream: impl Read+Seek, arc4_key: &Vec<u8>) -> CartFooter {
+    fn unpack(mut cart_stream: impl Read+Seek, arc4_key: &Vec<u8>) -> Result<CartFooter, Box<dyn std::error::Error>> {
         // Unpack mandatory footer
-        cart_stream.seek(SeekFrom::End(-28)).unwrap();
+        cart_stream.seek(SeekFrom::End(-28))?;
 
         let mut buffer = Vec::with_capacity(4);
         let _ = cart_stream.by_ref().take(4).read_to_end(&mut buffer);
-        let _magic = str::from_utf8(&buffer).expect("Wrong magic present").to_string();
+        let _magic = str::from_utf8(&buffer)?.to_string();
 
         let mut buffer = Vec::with_capacity(8);
         let _ = cart_stream.by_ref().take(8).read_to_end(&mut buffer);
 
         let mut buffer = Vec::with_capacity(8);
         let _ = cart_stream.by_ref().take(8).read_to_end(&mut buffer);
-        let opt_footer_pos: usize = bincode::deserialize(&buffer).expect("Wrong length present");
+        let opt_footer_pos: usize = bincode::deserialize(&buffer)?;
 
         let mut buffer = Vec::with_capacity(8);
         let _ = cart_stream.by_ref().take(8).read_to_end(&mut buffer);
-        let opt_footer_len: u64 = bincode::deserialize(&buffer).expect("Wrong length present");
+        let opt_footer_len: u64 = bincode::deserialize(&buffer)?;
 
         // Unpack optional footer
-        cart_stream.seek(SeekFrom::Start(opt_footer_pos as u64)).unwrap();
+        cart_stream.seek(SeekFrom::Start(opt_footer_pos as u64))?;
 
         let mut buffer = Vec::with_capacity(opt_footer_len as usize);
         let _ = cart_stream.by_ref().take(opt_footer_len).read_to_end(&mut buffer);
@@ -223,13 +212,12 @@ impl CartFooter {
         let mut cipher = Rc4::new(&arc4_key);
         let mut plain_text: Vec<u8> = vec![0; opt_footer_len as usize];
         cipher.process(&buffer, &mut plain_text[..]);
-        // TODO More elegant error propagation
-        let opt_footer = str::from_utf8(&plain_text).expect("Could not decrypt footer with the given ARC4 key").to_string();
+        let opt_footer = str::from_utf8(&plain_text)?.to_string();
 
-        CartFooter{opt_footer, opt_footer_pos}
+        Ok(CartFooter{opt_footer, opt_footer_pos})
     }
 
-    fn pack(&self, arc4_key: &Vec<u8>) -> Vec<u8> {
+    fn pack(&self, arc4_key: &Vec<u8>) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         let mut packed_footer: Vec<u8> = Vec::new();
         let opt_footer_len = self.opt_footer.len();
 
@@ -241,10 +229,10 @@ impl CartFooter {
 
         // Pack mandatory footer
         packed_footer.extend(globals::TRAC_MAGIC.as_bytes());
-        packed_footer.extend(bincode::serialize(&(0 as u64)).unwrap());
-        packed_footer.extend(bincode::serialize(&(self.opt_footer_pos as u64)).unwrap());
-        packed_footer.extend(bincode::serialize(&(opt_footer_len as u64)).unwrap());
+        packed_footer.extend(bincode::serialize(&(0 as u64))?);
+        packed_footer.extend(bincode::serialize(&(self.opt_footer_pos as u64))?);
+        packed_footer.extend(bincode::serialize(&(opt_footer_len as u64))?);
 
-        packed_footer
+        Ok(packed_footer)
     }
 }

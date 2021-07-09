@@ -43,7 +43,7 @@ opt_footer: Option<JsonValue>, arc4_key: Option<Vec<u8>>) -> Result<(), Box<dyn 
     footer.insert("sha256", sha256_digest)?;
 
     let cart_obj = cartobj::CartObject::new(binary, arc4_key, header, Some(footer.dump()), None)?;
-    ostream.write_all(&cart_obj.pack()[..])?;
+    ostream.write_all(&cart_obj.pack()?[..])?;
 
     Ok(())
 }
@@ -51,17 +51,16 @@ opt_footer: Option<JsonValue>, arc4_key: Option<Vec<u8>>) -> Result<(), Box<dyn 
 pub fn unpack(istream: impl Read+Seek, mut ostream: impl Write, arc4_key_override: Option<Vec<u8>>)
 -> Result<JsonValue, Box<dyn std::error::Error>> {
     let cart_obj = cartobj::CartObject::unpack(istream, arc4_key_override)?;
-    ostream.write_all(&cart_obj.raw_binary())?;
+    ostream.write_all(&cart_obj.raw_binary()?)?;
 
-    let metadata = cart_obj.metadata();
-    metadata
+    cart_obj.metadata()
 }
 
 pub fn examine(i_stream: impl Read+Seek, arc4_key_override: Option<Vec<u8>>)
 -> Result<JsonValue, Box<dyn std::error::Error>> {
     let cart_obj = cartobj::CartObject::unpack(i_stream, arc4_key_override)?;
 
-    Ok(cart_obj.metadata()?)
+    cart_obj.metadata()
 }
 
 pub fn pack_file(i_path: &Path, o_path: &Path, opt_header: Option<JsonValue>, opt_footer: Option<JsonValue>,
@@ -97,12 +96,9 @@ pub fn is_cart(mut i_stream: impl Read) -> bool {
     let mut buffer = Vec::with_capacity(4);
     let _ = &mut i_stream.by_ref().take(4).read_to_end(&mut buffer);
     let magic = str::from_utf8(&buffer);
+
     match magic {
-        Ok(m) => {
-            if m != globals::CART_MAGIC {
-                return false
-            }
-        },
+        Ok(m) => if m != globals::CART_MAGIC {return false}
         Err(_) => return false
     }
 
@@ -122,5 +118,3 @@ pub fn is_cart_file(i_path: &Path) -> Result<bool, Box<dyn std::error::Error>> {
 
     Ok(is_cart(infile))
 }
-
-
