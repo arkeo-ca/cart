@@ -48,7 +48,22 @@ fn test_simple() {
 
 #[test]
 fn test_rc4_override() {
+    let start_stream: Vec<u8> = "0123456789".as_bytes().to_vec();
+    let mut cart_stream:Vec<u8> = Vec::new();
+    let mut final_stream: Vec<u8> = Vec::new();
 
+    let key = "Test Da Key!".as_bytes().to_vec();
+    let opt_header = object! {"name": "testvalue"};
+    let opt_footer = object! {"rc4key": "Test Da Key!"};
+
+    cart::pack(&mut start_stream.as_slice(), &mut cart_stream, Some(opt_header.clone()), Some(opt_footer.clone()), Some(key.clone())).unwrap();
+    assert!(cart::is_cart(&cart_stream[..]));
+
+    let mut cart_cur = Cursor::new(cart_stream);
+    let (header, footer) = cart::unpack(&mut cart_cur, &mut final_stream, Some(key)).unwrap();
+    assert_eq!(opt_header, header);
+    assert_eq!(opt_footer, footer);
+    assert_eq!(start_stream, final_stream);
 }
 
 #[test]
