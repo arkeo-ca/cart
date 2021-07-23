@@ -63,7 +63,12 @@ fn main() {
             // Extract metadata from CaRT and print to screen
             if params.showmeta {
                 match cart::examine_file(i_path, arc4key.clone()) {
-                    Ok(s) => println!("{}", s.pretty(4)),
+                    Ok((mut header, footer)) => {
+                        for (k, v) in footer.entries() {
+                            header.insert(k, v.as_str()).unwrap();
+                        }
+                        println!("{}", header.pretty(4));
+                    },
                     Err(err) => eprintln!("ERR: Problem parsing metadata ({})", err),
                 }
                 continue;
@@ -84,7 +89,7 @@ fn main() {
             }
 
             // Unpack CaRTed file
-            let metadata = cart::unpack_file(i_path, o_path, arc4key.clone()).unwrap_or_else(|err| {
+            let (mut header, footer) = cart::unpack_file(i_path, o_path, arc4key.clone()).unwrap_or_else(|err| {
                 eprintln!("ERR: Encountered error during unpacking ({})", err);
                 process::exit(1);
             });
@@ -94,7 +99,11 @@ fn main() {
                 let m_path = i_path.with_extension("cartmeta");
                 let m_path = Path::new(&m_path);
 
-                write(m_path, metadata.dump()).unwrap_or_else(|_| {
+                for (k, v) in footer.entries() {
+                    header.insert(k, v.as_str()).unwrap();
+                }
+
+                write(m_path, header.dump()).unwrap_or_else(|_| {
                     eprintln!("ERR: Could not create metadata file");
                     process::exit(1);
                 });
