@@ -1,20 +1,15 @@
-extern crate bincode;
-extern crate crypto;
-extern crate libflate;
-extern crate json;
-
 mod globals;
 mod cartobj;
 
+use std::str;
+use std::fs::File;
+use std::path::Path;
+use std::io::{Read, Write, Seek};
+use json::JsonValue;
 use crypto::md5::Md5;
 use crypto::sha1::Sha1;
 use crypto::sha2::Sha256;
 use crypto::digest::Digest;
-use json::JsonValue;
-use std::io::{Read, Write, Seek};
-use std::fs::File;
-use std::path::Path;
-use std::str;
 
 pub fn pack(mut istream: impl Read, mut ostream: impl Write, opt_header: Option<JsonValue>,
 opt_footer: Option<JsonValue>, arc4_key: Option<Vec<u8>>) -> Result<(), Box<dyn std::error::Error>> {

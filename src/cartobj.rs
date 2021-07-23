@@ -25,7 +25,7 @@ impl CartObject {
         let deflated = encoder.finish().into_result()?;
 
         let header = CartHeader::new(arc4_key, opt_header, version);
-        let footer = CartFooter::new(opt_footer, 38 + header.opt_header.dump().len() + deflated.len());
+        let footer = CartFooter::new(opt_footer, globals::MAN_HEADER_LEN + header.opt_header.dump().len() as u64 + deflated.len() as u64);
 
         Ok(CartObject{header, footer, binary: deflated})
     }
@@ -34,7 +34,7 @@ impl CartObject {
         let header = CartHeader::unpack(&mut cart_stream, arc4_key)?;
         let footer = CartFooter::unpack(&mut cart_stream, &header.arc4_key)?;
         let binary = {
-            let buffer_start = 38 + header.opt_header.len() as u64;
+            let buffer_start = globals::MAN_HEADER_LEN + header.opt_header.len() as u64;
             let buffer_len = footer.opt_footer_pos as u64 - buffer_start;
             cart_stream.seek(SeekFrom::Start(buffer_start))?;
 
@@ -168,11 +168,11 @@ impl CartHeader {
 
 struct CartFooter {
     opt_footer: JsonValue,
-    opt_footer_pos: usize,
+    opt_footer_pos: u64,
 }
 
 impl CartFooter {
-    fn new(opt_footer: Option<JsonValue>, opt_footer_pos: usize) -> CartFooter {
+    fn new(opt_footer: Option<JsonValue>, opt_footer_pos: u64) -> CartFooter {
         let opt_footer = opt_footer.unwrap_or(JsonValue::Null);
 
         CartFooter{opt_footer, opt_footer_pos}
@@ -180,7 +180,7 @@ impl CartFooter {
 
     fn unpack(mut cart_stream: impl Read+Seek, arc4_key: &Vec<u8>) -> Result<CartFooter, Box<dyn std::error::Error>> {
         // Unpack mandatory footer
-        cart_stream.seek(SeekFrom::End(-28))?;
+        cart_stream.seek(SeekFrom::End(-(globals::MAN_FOOTER_LEN as i64)))?;
 
         let mut buffer = Vec::with_capacity(4);
         let _ = cart_stream.by_ref().take(4).read_to_end(&mut buffer);
@@ -191,14 +191,14 @@ impl CartFooter {
 
         let mut buffer = Vec::with_capacity(8);
         let _ = cart_stream.by_ref().take(8).read_to_end(&mut buffer);
-        let opt_footer_pos: usize = bincode::deserialize(&buffer)?;
+        let opt_footer_pos: u64 = bincode::deserialize(&buffer)?;
 
         let mut buffer = Vec::with_capacity(8);
         let _ = cart_stream.by_ref().take(8).read_to_end(&mut buffer);
         let opt_footer_len: u64 = bincode::deserialize(&buffer)?;
 
         // Unpack optional footer
-        cart_stream.seek(SeekFrom::Start(opt_footer_pos as u64))?;
+        cart_stream.seek(SeekFrom::Start(opt_footer_pos))?;
 
         let mut buffer = Vec::with_capacity(opt_footer_len as usize);
         let _ = cart_stream.by_ref().take(opt_footer_len).read_to_end(&mut buffer);
@@ -224,7 +224,7 @@ impl CartFooter {
         // Pack mandatory footer
         packed_footer.extend(globals::TRAC_MAGIC.as_bytes());
         packed_footer.extend(bincode::serialize(&(0 as u64))?);
-        packed_footer.extend(bincode::serialize(&(self.opt_footer_pos as u64))?);
+        packed_footer.extend(bincode::serialize(&(self.opt_footer_pos))?);
         packed_footer.extend(bincode::serialize(&(opt_footer_str.len() as u64))?);
 
         Ok(packed_footer)
