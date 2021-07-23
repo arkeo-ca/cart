@@ -6,7 +6,7 @@ mod config;
 use std::process;
 use std::fs::{read_to_string, remove_file, write};
 use std::path::Path;
-use json::object;
+use json::JsonValue;
 
 fn main() {
     // Parse configuration variables
@@ -101,9 +101,7 @@ fn main() {
             }
         } else {
             // Generate default filename from input path
-            let mut metadata = object!{
-                name: i_path.file_name().unwrap().to_string_lossy().to_string()
-            };
+            let mut metadata = JsonValue::new_object();
 
             // Compile metadata from cartmeta file (simply carry on if there is no cartmeta file)
             let m_path = format!("{}.cartmeta", i_path.to_string_lossy());
