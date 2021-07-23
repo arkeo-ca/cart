@@ -143,7 +143,11 @@ impl CartHeader {
 
     fn pack(&self) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         let mut packed_header: Vec<u8> = Vec::new();
-        let opt_header_str = self.opt_header.dump();
+        let opt_header_str = if self.opt_header != JsonValue::Null {
+            self.opt_header.dump()
+        } else {
+            "".to_string()
+        };
 
         // Pack mandatory header
         packed_header.extend(self.magic.as_bytes());
@@ -213,7 +217,11 @@ impl CartFooter {
 
     fn pack(&self, arc4_key: &Vec<u8>) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         let mut packed_footer: Vec<u8> = Vec::new();
-        let opt_footer_str = self.opt_footer.dump();
+        let opt_footer_str = if self.opt_footer != JsonValue::Null {
+            self.opt_footer.dump()
+        } else {
+            "".to_string()
+        };
 
         // Pack optional footer
         let mut cipher = Rc4::new(&arc4_key);
