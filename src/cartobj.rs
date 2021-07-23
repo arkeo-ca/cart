@@ -136,7 +136,7 @@ impl CartHeader {
         let mut cipher = Rc4::new(&arc4_key);
         let mut plain_text: Vec<u8> = vec![0; opt_header_len as usize];
         cipher.process(&buffer, &mut plain_text[..]);
-        let opt_header = json::parse(&str::from_utf8(&plain_text)?.to_string())?;
+        let opt_header = json::parse(&str::from_utf8(&plain_text)?.to_string()).unwrap_or(JsonValue::Null);
 
         Ok(CartHeader{magic, version, arc4_key, opt_header})
     }
@@ -210,7 +210,7 @@ impl CartFooter {
         let mut cipher = Rc4::new(&arc4_key);
         let mut plain_text: Vec<u8> = vec![0; opt_footer_len as usize];
         cipher.process(&buffer, &mut plain_text[..]);
-        let opt_footer = json::parse(&str::from_utf8(&plain_text)?.to_string())?;
+        let opt_footer = json::parse(&str::from_utf8(&plain_text)?.to_string()).unwrap_or(JsonValue::Null);
 
         Ok(CartFooter{opt_footer, opt_footer_pos})
     }
