@@ -18,8 +18,8 @@ fn test_empty() {
 }
 
 #[test]
-fn test_small() {
-    let small_stream: Vec<u8> = vec![61]; // "="
+fn test_simple() {
+    let small_stream: Vec<u8> = "This is a very bad file".as_bytes().to_vec();
     let mut cart_stream:Vec<u8> = Vec::new();
     let mut final_stream: Vec<u8> = Vec::new();
 
@@ -34,16 +34,6 @@ fn test_small() {
     assert_eq!(opt_header, header);
     assert_eq!(opt_footer, footer);
     assert_eq!(small_stream, final_stream);
-}
-
-#[test]
-fn test_large() {
-
-}
-
-#[test]
-fn test_simple() {
-
 }
 
 #[test]
