@@ -1,6 +1,5 @@
 use crate::globals;
 
-use serde::{Serialize, Deserialize};
 use crypto::symmetriccipher::SynchronousStreamCipher;
 use crypto::rc4::Rc4;
 use libflate::zlib::{Encoder, EncodeOptions, Decoder};
@@ -8,7 +7,7 @@ use std::io::{self, Read, Seek, SeekFrom};
 use json::JsonValue;
 use std::str;
 
-#[derive(Serialize, Deserialize)]
+
 pub struct CartObject {
     header: CartHeader,
     footer: CartFooter,
@@ -16,8 +15,8 @@ pub struct CartObject {
 }
 
 impl CartObject {
-    pub fn new(binary: Vec<u8>, arc4_key: Option<Vec<u8>>, opt_header: Option<String>,
-    opt_footer: Option<String>, version: Option<i16>) -> Result<CartObject, Box<dyn std::error::Error>>{
+    pub fn new(binary: Vec<u8>, arc4_key: Option<Vec<u8>>, opt_header: Option<JsonValue>,
+    opt_footer: Option<JsonValue>, version: Option<i16>) -> Result<CartObject, Box<dyn std::error::Error>>{
         let arc4_key = arc4_key.unwrap_or(globals::DEFAULT_ARC4_KEY.to_vec());
 
         let options = EncodeOptions::new().fixed_huffman_codes();
@@ -26,7 +25,7 @@ impl CartObject {
         let deflated = encoder.finish().into_result()?;
 
         let header = CartHeader::new(arc4_key, opt_header, version);
-        let footer = CartFooter::new(opt_footer, 38 + header.opt_header.len() + deflated.len());
+        let footer = CartFooter::new(opt_footer, 38 + header.opt_header.dump().len() + deflated.len());
 
         Ok(CartObject{header, footer, binary: deflated})
     }
@@ -79,8 +78,8 @@ impl CartObject {
     }
 
     pub fn metadata(&self) -> Result<JsonValue, Box<dyn std::error::Error>>{
-        let mut metadata = json::parse(&self.header.opt_header)?;
-        let extra_metadata = json::parse(&self.footer.opt_footer)?;
+        let mut metadata = self.header.opt_header.clone();
+        let extra_metadata = &self.footer.opt_footer;
 
         for (k, v) in extra_metadata.entries() {
             metadata.insert(k, v.as_str())?;
@@ -89,19 +88,18 @@ impl CartObject {
     }
 }
 
-#[derive(Serialize, Deserialize)]
 struct CartHeader {
     magic: String,
     version: i16,
     arc4_key: Vec<u8>,
-    opt_header: String,
+    opt_header: JsonValue,
 }
 
 impl CartHeader {
-    fn new(arc4_key: Vec<u8>, opt_header: Option<String>, version: Option<i16>) -> CartHeader {
+    fn new(arc4_key: Vec<u8>, opt_header: Option<JsonValue>, version: Option<i16>) -> CartHeader {
         let magic = String::from(globals::CART_MAGIC);
         let version = version.unwrap_or(globals::DEFAULT_VERSION);
-        let opt_header = opt_header.unwrap_or(String::from(""));
+        let opt_header = opt_header.unwrap_or(JsonValue::Null);
 
         CartHeader{magic, version, arc4_key, opt_header}
     }
@@ -138,14 +136,14 @@ impl CartHeader {
         let mut cipher = Rc4::new(&arc4_key);
         let mut plain_text: Vec<u8> = vec![0; opt_header_len as usize];
         cipher.process(&buffer, &mut plain_text[..]);
-        let opt_header = str::from_utf8(&plain_text)?.to_string();
+        let opt_header = json::parse(&str::from_utf8(&plain_text)?.to_string())?;
 
         Ok(CartHeader{magic, version, arc4_key, opt_header})
     }
 
     fn pack(&self) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         let mut packed_header: Vec<u8> = Vec::new();
-        let opt_header_len = self.opt_header.len();
+        let opt_header_str = self.opt_header.dump();
 
         // Pack mandatory header
         packed_header.extend(self.magic.as_bytes());
@@ -156,30 +154,26 @@ impl CartHeader {
         } else {
             packed_header.extend(bincode::serialize(&(0 as u128))?);
         }
-        packed_header.extend(bincode::serialize(&(opt_header_len as u64))?);
+        packed_header.extend(bincode::serialize(&(opt_header_str.len() as u64))?);
 
         // Pack optional header
         let mut cipher = Rc4::new(&self.arc4_key);
-        let mut out_header: Vec<u8> = vec![0; opt_header_len];
-        cipher.process(self.opt_header.as_bytes(), &mut out_header[..]);
+        let mut out_header: Vec<u8> = vec![0; opt_header_str.len()];
+        cipher.process(opt_header_str.as_bytes(), &mut out_header[..]);
         packed_header.extend(out_header);
 
         Ok(packed_header)
     }
 }
 
-#[derive(Serialize, Deserialize)]
 struct CartFooter {
-    opt_footer: String,
+    opt_footer: JsonValue,
     opt_footer_pos: usize,
 }
 
 impl CartFooter {
-    fn new(opt_footer: Option<String>, opt_footer_pos: usize) -> CartFooter {
-        let opt_footer = match opt_footer {
-            Some(k) => k,
-            None => String::from(""),
-        };
+    fn new(opt_footer: Option<JsonValue>, opt_footer_pos: usize) -> CartFooter {
+        let opt_footer = opt_footer.unwrap_or(JsonValue::Null);
 
         CartFooter{opt_footer, opt_footer_pos}
     }
@@ -212,26 +206,26 @@ impl CartFooter {
         let mut cipher = Rc4::new(&arc4_key);
         let mut plain_text: Vec<u8> = vec![0; opt_footer_len as usize];
         cipher.process(&buffer, &mut plain_text[..]);
-        let opt_footer = str::from_utf8(&plain_text)?.to_string();
+        let opt_footer = json::parse(&str::from_utf8(&plain_text)?.to_string())?;
 
         Ok(CartFooter{opt_footer, opt_footer_pos})
     }
 
     fn pack(&self, arc4_key: &Vec<u8>) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         let mut packed_footer: Vec<u8> = Vec::new();
-        let opt_footer_len = self.opt_footer.len();
+        let opt_footer_str = self.opt_footer.dump();
 
         // Pack optional footer
         let mut cipher = Rc4::new(&arc4_key);
-        let mut out_footer: Vec<u8> = vec![0; opt_footer_len];
-        cipher.process(self.opt_footer.as_bytes(), &mut out_footer[..]);
+        let mut out_footer: Vec<u8> = vec![0; opt_footer_str.len()];
+        cipher.process(opt_footer_str.as_bytes(), &mut out_footer[..]);
         packed_footer.extend(out_footer);
 
         // Pack mandatory footer
         packed_footer.extend(globals::TRAC_MAGIC.as_bytes());
         packed_footer.extend(bincode::serialize(&(0 as u64))?);
         packed_footer.extend(bincode::serialize(&(self.opt_footer_pos as u64))?);
-        packed_footer.extend(bincode::serialize(&(opt_footer_len as u64))?);
+        packed_footer.extend(bincode::serialize(&(opt_footer_str.len() as u64))?);
 
         Ok(packed_footer)
     }

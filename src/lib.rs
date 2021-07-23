@@ -22,27 +22,7 @@ opt_footer: Option<JsonValue>, arc4_key: Option<Vec<u8>>) -> Result<(), Box<dyn 
     let mut binary: Vec<u8> = Vec::new();
     istream.by_ref().read_to_end(&mut binary)?;
 
-    let header = opt_header.map(|h| {h.dump()});
-    let mut footer = opt_footer.unwrap_or(JsonValue::new_object());
-
-    let mut md5_hasher = Md5::new();
-    md5_hasher.input(&binary);
-    let md5_digest = md5_hasher.result_str();
-
-    let mut sha1_hasher = Sha1::new();
-    sha1_hasher.input(&binary);
-    let sha1_digest = sha1_hasher.result_str();
-
-    let mut sha256_hasher = Sha256::new();
-    sha256_hasher.input(&binary);
-    let sha256_digest = sha256_hasher.result_str();
-
-    footer.insert("length", binary.len().to_string())?;
-    footer.insert("md5", md5_digest)?;
-    footer.insert("sha1", sha1_digest)?;
-    footer.insert("sha256", sha256_digest)?;
-
-    let cart_obj = cartobj::CartObject::new(binary, arc4_key, header, Some(footer.dump()), None)?;
+    let cart_obj = cartobj::CartObject::new(binary, arc4_key, opt_header, opt_footer, None)?;
     ostream.write_all(&cart_obj.pack()?[..])?;
 
     Ok(())
@@ -66,10 +46,39 @@ pub fn examine(i_stream: impl Read+Seek, arc4_key_override: Option<Vec<u8>>)
 pub fn pack_file(i_path: &Path, o_path: &Path, opt_header: Option<JsonValue>, opt_footer: Option<JsonValue>,
 arc4_key_override: Option<Vec<u8>>) -> Result<(), Box<dyn std::error::Error>> {
 
-    let infile = File::open(i_path)?;
+    let mut infile = File::open(i_path)?;
     let outfile = File::create(o_path)?;
 
-    pack(infile, outfile, opt_header, opt_footer, arc4_key_override)?;
+    let mut binary: Vec<u8> = Vec::new();
+    infile.read_to_end(&mut binary)?;
+
+    // Generate default header metadata
+    let mut header = opt_header.unwrap_or(JsonValue::new_object());
+    if !header.has_key("name") {
+        header.insert("name", i_path.file_name().unwrap().to_string_lossy().to_string())?;
+    }
+
+    // Generate default footer metadata
+    let mut footer = opt_footer.unwrap_or(JsonValue::new_object());
+
+    let mut md5_hasher = Md5::new();
+    md5_hasher.input(&binary);
+    let md5_digest = md5_hasher.result_str();
+
+    let mut sha1_hasher = Sha1::new();
+    sha1_hasher.input(&binary);
+    let sha1_digest = sha1_hasher.result_str();
+
+    let mut sha256_hasher = Sha256::new();
+    sha256_hasher.input(&binary);
+    let sha256_digest = sha256_hasher.result_str();
+
+    footer.insert("length", binary.len().to_string())?;
+    footer.insert("md5", md5_digest)?;
+    footer.insert("sha1", sha1_digest)?;
+    footer.insert("sha256", sha256_digest)?;
+
+    pack(&binary[..], outfile, Some(header), Some(footer), arc4_key_override)?;
 
     Ok(())
 }
