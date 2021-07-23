@@ -53,5 +53,6 @@ fn test_rc4_override() {
 
 #[test]
 fn test_not_a_cart() {
-
+    let fake_stream: Vec<u8> = "0123456".as_bytes().to_vec();
+    assert!(!cart::is_cart(&fake_stream[..]));
 }
