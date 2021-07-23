@@ -24,7 +24,7 @@ opt_footer: Option<JsonValue>, arc4_key: Option<Vec<u8>>) -> Result<(), Box<dyn 
 }
 
 pub fn unpack(istream: impl Read+Seek, mut ostream: impl Write, arc4_key_override: Option<Vec<u8>>)
--> Result<JsonValue, Box<dyn std::error::Error>> {
+-> Result<(JsonValue, JsonValue), Box<dyn std::error::Error>> {
     let cart_obj = cartobj::CartObject::unpack(istream, arc4_key_override)?;
     ostream.write_all(&cart_obj.raw_binary()?)?;
 
@@ -32,7 +32,7 @@ pub fn unpack(istream: impl Read+Seek, mut ostream: impl Write, arc4_key_overrid
 }
 
 pub fn examine(i_stream: impl Read+Seek, arc4_key_override: Option<Vec<u8>>)
--> Result<JsonValue, Box<dyn std::error::Error>> {
+-> Result<(JsonValue, JsonValue), Box<dyn std::error::Error>> {
     let cart_obj = cartobj::CartObject::unpack(i_stream, arc4_key_override)?;
 
     cart_obj.metadata()
@@ -79,7 +79,7 @@ arc4_key_override: Option<Vec<u8>>) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 pub fn unpack_file(i_path: &Path, o_path: &Path, arc4_key_override: Option<Vec<u8>>)
--> Result<JsonValue, Box<dyn std::error::Error>> {
+-> Result<(JsonValue, JsonValue), Box<dyn std::error::Error>> {
 
     let infile = File::open(i_path)?;
     let outfile = File::create(o_path)?;
@@ -90,7 +90,7 @@ pub fn unpack_file(i_path: &Path, o_path: &Path, arc4_key_override: Option<Vec<u
 }
 
 pub fn examine_file(i_path: &Path, arc4_key_override: Option<Vec<u8>>)
--> Result<JsonValue, Box<dyn std::error::Error>> {
+-> Result<(JsonValue, JsonValue), Box<dyn std::error::Error>> {
     let infile = File::open(i_path)?;
 
     Ok(examine(infile, arc4_key_override)?)

@@ -25,7 +25,11 @@ impl CartObject {
         let deflated = encoder.finish().into_result()?;
 
         let header = CartHeader::new(arc4_key, opt_header, version);
-        let footer = CartFooter::new(opt_footer, globals::MAN_HEADER_LEN + header.opt_header.dump().len() as u64 + deflated.len() as u64);
+        let opt_header_len = match &header.opt_header {
+            Some(j) => j.dump().len(),
+            None => 0,
+        };
+        let footer = CartFooter::new(opt_footer, globals::MAN_HEADER_LEN + opt_header_len as u64 + deflated.len() as u64);
 
         Ok(CartObject{header, footer, binary: deflated})
     }
@@ -34,12 +38,17 @@ impl CartObject {
         let header = CartHeader::unpack(&mut cart_stream, arc4_key)?;
         let footer = CartFooter::unpack(&mut cart_stream, &header.arc4_key)?;
         let binary = {
-            let buffer_start = globals::MAN_HEADER_LEN + header.opt_header.len() as u64;
+            let opt_header_len = match &header.opt_header {
+                Some(j) => j.dump().len(),
+                None => 0,
+            };
+            let buffer_start = globals::MAN_HEADER_LEN + opt_header_len as u64;
             let buffer_len = footer.opt_footer_pos as u64 - buffer_start;
             cart_stream.seek(SeekFrom::Start(buffer_start))?;
 
             let mut buffer = Vec::with_capacity(buffer_len as usize);
             let _ = cart_stream.by_ref().take(buffer_len).read_to_end(&mut buffer);
+            println!("{:?}", buffer);
 
             let mut cipher = Rc4::new(&header.arc4_key);
             let mut plain_text: Vec<u8> = vec![0; buffer_len as usize];
@@ -77,14 +86,16 @@ impl CartObject {
         Ok(inflated)
     }
 
-    pub fn metadata(&self) -> Result<JsonValue, Box<dyn std::error::Error>>{
-        let mut metadata = self.header.opt_header.clone();
-        let extra_metadata = &self.footer.opt_footer;
-
-        for (k, v) in extra_metadata.entries() {
-            metadata.insert(k, v.as_str())?;
-        }
-        Ok(metadata)
+    pub fn metadata(&self) -> Result<(JsonValue, JsonValue), Box<dyn std::error::Error>>{
+        let header = match &self.header.opt_header {
+            Some(j) => j.clone(),
+            None => JsonValue::new_object(),
+        };
+        let footer = match &self.footer.opt_footer {
+            Some(j) => j.clone(),
+            None => JsonValue::new_object(),
+        };
+        Ok((header, footer))
     }
 }
 
@@ -92,14 +103,13 @@ struct CartHeader {
     magic: String,
     version: i16,
     arc4_key: Vec<u8>,
-    opt_header: JsonValue,
+    opt_header: Option<JsonValue>,
 }
 
 impl CartHeader {
     fn new(arc4_key: Vec<u8>, opt_header: Option<JsonValue>, version: Option<i16>) -> CartHeader {
         let magic = String::from(globals::CART_MAGIC);
         let version = version.unwrap_or(globals::DEFAULT_VERSION);
-        let opt_header = opt_header.unwrap_or(JsonValue::Null);
 
         CartHeader{magic, version, arc4_key, opt_header}
     }
@@ -136,17 +146,19 @@ impl CartHeader {
         let mut cipher = Rc4::new(&arc4_key);
         let mut plain_text: Vec<u8> = vec![0; opt_header_len as usize];
         cipher.process(&buffer, &mut plain_text[..]);
-        let opt_header = json::parse(&str::from_utf8(&plain_text)?.to_string())?;
+        let opt_header = match json::parse(&str::from_utf8(&plain_text)?.to_string()) {
+            Ok(j) => Some(j),
+            Err(_) => None,
+        };
 
         Ok(CartHeader{magic, version, arc4_key, opt_header})
     }
 
     fn pack(&self) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         let mut packed_header: Vec<u8> = Vec::new();
-        let opt_header_str = if self.opt_header != JsonValue::Null {
-            self.opt_header.dump()
-        } else {
-            "".to_string()
+        let opt_header_str = match &self.opt_header {
+            Some(j) => j.dump(),
+            None => "".to_string(),
         };
 
         // Pack mandatory header
@@ -171,14 +183,12 @@ impl CartHeader {
 }
 
 struct CartFooter {
-    opt_footer: JsonValue,
+    opt_footer: Option<JsonValue>,
     opt_footer_pos: u64,
 }
 
 impl CartFooter {
     fn new(opt_footer: Option<JsonValue>, opt_footer_pos: u64) -> CartFooter {
-        let opt_footer = opt_footer.unwrap_or(JsonValue::Null);
-
         CartFooter{opt_footer, opt_footer_pos}
     }
 
@@ -210,17 +220,19 @@ impl CartFooter {
         let mut cipher = Rc4::new(&arc4_key);
         let mut plain_text: Vec<u8> = vec![0; opt_footer_len as usize];
         cipher.process(&buffer, &mut plain_text[..]);
-        let opt_footer = json::parse(&str::from_utf8(&plain_text)?.to_string())?;
+        let opt_footer = match json::parse(&str::from_utf8(&plain_text)?.to_string()) {
+            Ok(j) => Some(j),
+            Err(_) => None,
+        };
 
         Ok(CartFooter{opt_footer, opt_footer_pos})
     }
 
     fn pack(&self, arc4_key: &Vec<u8>) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         let mut packed_footer: Vec<u8> = Vec::new();
-        let opt_footer_str = if self.opt_footer != JsonValue::Null {
-            self.opt_footer.dump()
-        } else {
-            "".to_string()
+        let opt_footer_str = match &self.opt_footer {
+            Some(j) => j.dump(),
+            None => "".to_string(),
         };
 
         // Pack optional footer
