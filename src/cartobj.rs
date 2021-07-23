@@ -34,7 +34,7 @@ impl CartObject {
         let header = CartHeader::unpack(&mut cart_stream, arc4_key)?;
         let footer = CartFooter::unpack(&mut cart_stream, &header.arc4_key)?;
         let binary = {
-            let buffer_start = globals::MAN_HEADER_LEN + header.opt_header.len() as u64;
+            let buffer_start = globals::MAN_HEADER_LEN + header.opt_header.dump().len() as u64;
             let buffer_len = footer.opt_footer_pos as u64 - buffer_start;
             cart_stream.seek(SeekFrom::Start(buffer_start))?;
 
