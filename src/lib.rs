@@ -33,9 +33,7 @@ pub fn unpack(istream: impl Read+Seek, mut ostream: impl Write, arc4_key_overrid
 
 pub fn examine(i_stream: impl Read+Seek, arc4_key_override: Option<Vec<u8>>)
 -> Result<(JsonValue, JsonValue), Box<dyn std::error::Error>> {
-    let cart_obj = cartobj::CartObject::unpack(i_stream, arc4_key_override)?;
-
-    cart_obj.metadata()
+    cartobj::CartObject::examine(i_stream, arc4_key_override)
 }
 
 pub fn pack_file(i_path: &Path, o_path: &Path, opt_header: Option<JsonValue>, opt_footer: Option<JsonValue>,
