@@ -60,6 +60,23 @@ impl CartObject {
         Ok(CartObject{header, footer, binary})
     }
 
+    pub fn examine(mut cart_stream: impl Read+Seek, arc4_key: Option<Vec<u8>>)
+    -> Result<(JsonValue, JsonValue), Box<dyn std::error::Error>> {
+        let header_obj = CartHeader::unpack(&mut cart_stream, arc4_key)?;
+        let footer_obj = CartFooter::unpack(&mut cart_stream, &header_obj.arc4_key)?;
+
+        let header = match header_obj.opt_header {
+            Some(j) => j.clone(),
+            None => JsonValue::new_object(),
+        };
+        let footer = match footer_obj.opt_footer {
+            Some(j) => j.clone(),
+            None => JsonValue::new_object(),
+        };
+
+        Ok((header, footer))
+    }
+
     pub fn pack(&self) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         let mut packed_cart: Vec<u8> = Vec::new();
 
