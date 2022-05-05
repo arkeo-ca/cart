@@ -34,27 +34,32 @@ impl Config {
         let mut outfile: Option<String> = None;
 
         let mut default_header = JsonValue::new_object();
-
         {
-            let env_home = format!("{}/.cart/cart.cfg", std::env::var("HOME").unwrap());
+            #[cfg(target_os = "linux")]
+            let env_home = format!("{}/.config/cart/cart.cfg", std::env::var("HOME").unwrap());
+            #[cfg(target_os = "windows")]
+            let env_home = format!("{}\\Cart\\cart.cfg", std::env::var("APPDATA").unwrap());
+
             let c_path = Path::new(&env_home);
 
-            let mut cp = Ini::new();
-            let map = cp.load(c_path);
+            let mut config = Ini::new();
+            let map = config.load(c_path);
 
             if let Ok(m) = map {
-                if let Some(v) = cp.getbool("global", "keep_meta").unwrap() {
+                if let Some(v) = config.getbool("global", "keep_meta").unwrap() {
                     meta = v;
                 }
-                if let Some(v) = cp.getbool("global", "force").unwrap() {
+                if let Some(v) = config.getbool("global", "force").unwrap() {
+                    
                     force = v;
                 }
-                if let Some(v) = cp.getbool("global", "delete").unwrap() {
+                if let Some(v) = config.getbool("global", "delete").unwrap() {
                     delete = v;
                 }
-                key = cp.get("global", "rc4_key");
-
-                default_header = json::from(m["default_header"].clone());
+                key = config.get("global", "rc4_key");
+                if m.contains_key("default_header") {
+                    default_header = json::from(m["default_header"].clone());
+                }
             }
         }
 
