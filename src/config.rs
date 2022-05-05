@@ -42,23 +42,24 @@ impl Config {
 
             let c_path = Path::new(&env_home);
 
-            let mut cp = Ini::new();
-            let map = cp.load(c_path);
+            let mut config = Ini::new();
+            let map = config.load(c_path);
 
             if let Ok(m) = map {
-                if let Some(v) = cp.getbool("global", "keep_meta").unwrap() {
+                if let Some(v) = config.getbool("global", "keep_meta").unwrap() {
                     meta = v;
                 }
-                if let Some(v) = cp.getbool("global", "force").unwrap() {
+                if let Some(v) = config.getbool("global", "force").unwrap() {
                     
                     force = v;
                 }
-                if let Some(v) = cp.getbool("global", "delete").unwrap() {
+                if let Some(v) = config.getbool("global", "delete").unwrap() {
                     delete = v;
                 }
-                key = cp.get("global", "rc4_key");
-
-                default_header = json::from(m["default_header"].clone());
+                key = config.get("global", "rc4_key");
+                if m.contains_key("default_header") {
+                    default_header = json::from(m["default_header"].clone());
+                }
             }
         }
 
