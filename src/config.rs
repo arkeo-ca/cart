@@ -34,9 +34,12 @@ impl Config {
         let mut outfile: Option<String> = None;
 
         let mut default_header = JsonValue::new_object();
-
         {
-            let env_home = format!("{}/.cart/cart.cfg", std::env::var("HOME").unwrap());
+            #[cfg(target_os = "linux")]
+            let env_home = format!("{}/.config/cart/cart.cfg", std::env::var("HOME").unwrap());
+            #[cfg(target_os = "windows")]
+            let env_home = format!("{}\\Cart\\cart.cfg", std::env::var("APPDATA").unwrap());
+
             let c_path = Path::new(&env_home);
 
             let mut cp = Ini::new();
@@ -47,6 +50,7 @@ impl Config {
                     meta = v;
                 }
                 if let Some(v) = cp.getbool("global", "force").unwrap() {
+                    
                     force = v;
                 }
                 if let Some(v) = cp.getbool("global", "delete").unwrap() {
