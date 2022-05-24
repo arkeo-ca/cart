@@ -16,11 +16,11 @@ fn main() {
     });
 
     // Validate configuration variables
-    if params.file.is_empty() {
+    if params.files.is_empty() {
         eprintln!("No file specified. Please use 'cart -h' to show help message.");
         process::exit(1);
     }
-    if params.file.len() > 1 {
+    if params.files.len() > 1 {
         if let Some(_) = params.name {
             eprintln!("ERR: Cannot set 'filename' option when UN/CaRTing multiple files");
             process::exit(1);
@@ -46,7 +46,7 @@ fn main() {
     });
 
     // Iterate through files
-    for input_file in params.file {
+    for input_file in params.files {
 
         // Validate input file
         let i_path = Path::new(&input_file);

@@ -5,7 +5,7 @@ use clap::Parser;
 
 #[derive(Debug)]
 pub struct Config {
-    pub file: Vec<String>,
+    pub files: Vec<String>,
     pub delete: bool,
     pub force: bool,
     pub ignore: bool,
@@ -64,7 +64,7 @@ impl Config {
             args.key = None;
         }
 
-        Ok(Config {file: args.file, delete: args.delete, force: args.force, ignore: args.ignore, 
+        Ok(Config {files: args.files, delete: args.delete, force: args.force, ignore: args.ignore, 
             meta: args.meta, showmeta: args.showmeta, jsonmeta: args.jsonmeta, key: args.key, 
             name: args.name, outfile: args.outfile, default_header})
     }
@@ -73,7 +73,7 @@ impl Config {
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
-    file: Vec<String>,
+    files: Vec<String>,
 
     /// Replace output file if it already exists
     #[clap(short, long)]
