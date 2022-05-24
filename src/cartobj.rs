@@ -48,7 +48,6 @@ impl CartObject {
 
             let mut buffer = Vec::with_capacity(buffer_len as usize);
             let _ = cart_stream.by_ref().take(buffer_len).read_to_end(&mut buffer);
-            println!("{:?}", buffer);
 
             let mut cipher = Rc4::new(&header.arc4_key);
             let mut plain_text: Vec<u8> = vec![0; buffer_len as usize];
