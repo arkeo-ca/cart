@@ -76,7 +76,7 @@ fn main() {
 
             // Generate and validate output path
             let o_path = params.outfile.clone().unwrap_or(
-                if i_path.ends_with("cart") {
+                if i_path.extension().unwrap() == "cart" {
                     i_path.with_extension("").to_string_lossy().to_string()
                 } else {
                     format!("{}.uncart", i_path.to_string_lossy())
