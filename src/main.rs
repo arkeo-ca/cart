@@ -153,7 +153,11 @@ fn main() {
 
             // Only show metadata if requested
             if params.showmeta {
-                println!("{}", metadata.pretty(4));
+                if metadata.is_empty() {
+                    println!("No metadata is associated with this file.");
+                } else {
+                    println!("{}", metadata.pretty(4));
+                }
                 continue;
             }
 
